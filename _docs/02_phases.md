@@ -1,4 +1,4 @@
-# Lộ trình phát triển — Chinese Image Translator AI
+﻿# Lộ trình phát triển — Chinese Image Translator AI
 
 ## Phase 1 — Foundation ⬜
 
