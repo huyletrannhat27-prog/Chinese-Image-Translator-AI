@@ -1,21 +1,81 @@
-MIT License
+MIT © huyletrannhat27-prog
 
-Copyright (c) 2026 NhatHuy
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+---
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+## File: `_docs/01-overview.md`
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+```markdown
+# Tổng quan dự án — Chinese Image Translator AI
+
+## Mục tiêu
+
+Xây dựng một ứng dụng web cho phép người dùng upload ảnh chứa văn bản tiếng Trung, tự động trích xuất (OCR) và dịch sang tiếng Việt (hoặc các ngôn ngữ khác) sử dụng mô hình ngôn ngữ lớn (LLM).
+
+---
+
+## Tech Stack
+
+| Thành phần | Lựa chọn | Ghi chú |
+|---|---|---|
+| Framework | Next.js 14 | App Router, React Server Components |
+| UI | Tailwind CSS + Shadcn/ui | Giao diện hiện đại, responsive |
+| OCR | Tesseract.js (client) + Google Vision API (server) | Client-first với server fallback |
+| Dịch thuật | OpenAI GPT-4 / Gemini / Claude | LLM, giữ ngữ cảnh và thành ngữ |
+| Xử lý ảnh | Sharp | Resize, tối ưu trước khi OCR |
+| File upload | Next.js + Multer | Xử lý multipart/form-data |
+| Cache | In-memory | Lưu tạm kết quả để tránh gọi lại API |
+| Deploy | Vercel / Docker | |
+
+---
+
+## Actors
+
+### Người dùng (User)
+- Upload ảnh có chứa văn bản tiếng Trung
+- Xem kết quả OCR và bản dịch
+- Copy nội dung gốc và bản dịch
+- Chọn ngôn ngữ đích (Việt/Anh/...)
+- Xem lịch sử dịch (phiên bản nâng cao)
+
+### Admin (hệ thống)
+- Giám sát số lượng request
+- Quản lý API keys
+- Xem logs và lỗi hệ thống
+- Điều chỉnh cấu hình dịch vụ
+
+---
+
+## Nguyên tắc thiết kế
+
+- **Client-first processing** — OCR thực hiện trên client để giảm tải server, giảm chi phí API
+- **Server fallback** — Chuyển sang Google Vision API khi Tesseract.js không đủ chính xác
+- **Giữ ngữ cảnh** — Dịch theo câu/đoạn văn, không word-by-word
+- **Bảo mật** — Ảnh được xóa sau 1 giờ, không lưu vĩnh viễn
+- **Trải nghiệm người dùng** — Upload drag-and-drop, xem trước ảnh, xử lý bất đồng bộ
+- **Rate limiting** — Giới hạn số request để tránh lạm dụng API
+
+---
+
+## Tính năng cốt lõi (MVP)
+
+1. **Upload ảnh** — Drag-and-drop hoặc click chọn file
+2. **Xem trước ảnh** — Hiển thị ảnh sau khi upload
+3. **OCR (Client-side)** — Tesseract.js nhận diện chữ Hán
+4. **OCR (Server fallback)** — Google Vision API nếu Tesseract kém
+5. **Phát hiện ngôn ngữ** — Tự động nhận diện Giản thể / Phồn thể
+6. **Dịch văn bản** — Gọi LLM để dịch sang tiếng Việt
+7. **Copy kết quả** — Sao chép nội dung và bản dịch
+8. **Chọn ngôn ngữ đích** — Tiếng Việt, Anh, Nhật, Hàn, v.v.
+
+---
+
+## Tính năng mở rộng (Future)
+
+- Lịch sử dịch thuật
+- Dịch file PDF nhiều trang
+- Dịch theo batch (nhiều ảnh cùng lúc)
+- Chế độ offline với Tesseract.js (no server)
+- Export kết quả ra Word/PDF
+- Giao diện đa ngôn ngữ
+- Hỗ trợ thêm nhiều ngôn ngữ OCR (Nhật, Hàn, Thái...)
