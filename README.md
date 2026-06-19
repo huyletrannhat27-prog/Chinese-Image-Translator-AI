@@ -40,6 +40,16 @@ Upload hình ảnh chứa chữ Hán → AI tự động trích xuất & dịch 
 
 ## 🚀 Cài đặt & Chạy
 
+## 📌 Yêu cầu hệ thống
+Node.js >= 18
+
+npm >= 9
+
+API key của dịch vụ OCR và LLM tương ứng
+
+## 🤝 Đóng góp
+Mọi đóng góp đều được chào đón! Vui lòng tạo issue hoặc pull request.
+
 ### Clone repo
 ```bash
 git clone https://github.com/huyletrannhat27-prog/Chinese-Image-Translator-AI.git
