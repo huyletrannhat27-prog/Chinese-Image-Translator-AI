@@ -55,7 +55,6 @@
 
 ## 🔄 Luồng xử lý
 
-```mermaid
 flowchart TD
     A[📸 Chụp ảnh] --> B[🖼️ Tiền xử lý]
     B --> C[📝 OCR - Tesseract.js]
