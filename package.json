@@ -1,7 +1,7 @@
 {
   "name": "chinese-image-translator",
   "version": "1.0.0",
-  "description": "AI-powered Chinese image translator with OCR and LLM",
+  "description": "AI-powered Chinese image translator with OCR and LLM - Chụp ảnh, dịch tiếng Trung sang tiếng Việt ngay lập tức",
   "author": "huyletrannhat27-prog",
   "license": "MIT",
   "private": true,
@@ -15,6 +15,7 @@
   "dependencies": {
     "@google/generative-ai": "^0.1.0",
     "@radix-ui/react-dialog": "^1.0.5",
+    "@radix-ui/react-dropdown-menu": "^2.0.6",
     "@radix-ui/react-slot": "^1.0.2",
     "@radix-ui/react-toast": "^1.1.5",
     "class-variance-authority": "^0.7.0",
@@ -39,5 +40,27 @@
     "postcss": "^8.4.0",
     "tailwindcss": "^3.3.0",
     "typescript": "^5.0.0"
-  }
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "keywords": [
+    "chinese",
+    "translator",
+    "ocr",
+    "ai",
+    "image-translator",
+    "nextjs",
+    "tesseract",
+    "gemini"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/huyletrannhat27-prog/chinese-image-translator.git"
+  },
+  "bugs": {
+    "url": "https://github.com/huyletrannhat27-prog/chinese-image-translator/issues"
+  },
+  "homepage": "https://github.com/huyletrannhat27-prog/chinese-image-translator#readme"
 }
