@@ -53,4 +53,145 @@
 
 ---
 
-## 📊 Kiến trúc hệ thống
+## 🔄 Luồng xử lý
+
+```mermaid
+flowchart TD
+    A[📸 Chụp ảnh] --> B[🖼️ Tiền xử lý]
+    B --> C[📝 OCR - Tesseract.js]
+    C --> D[🔤 Phát hiện ngôn ngữ]
+    D --> E{Confidence > 60%?}
+    E -- Yes --> F[🤖 Dịch bằng Gemini]
+    E -- No --> G[🔄 Retry với preprocessing]
+    G --> C
+    F --> H[📋 Lưu lịch sử]
+    H --> I[🎯 Hiển thị kết quả]
+
+🚀 Cài đặt & Chạy:
+
+    - Yêu cầu hệ thống:
+
+        Node.js >= 18
+
+        npm / yarn / bun
+
+        iOS: Xcode 14+ / Android: Android Studio
+
+        Expo CLI
+
+
+
+Clone & Cài đặt:
+# Clone repo
+git clone https://github.com/huyletrannhat27-prog/chinese-image-translator.git
+cd chinese-image-translator
+
+# Cài dependencies
+npm install
+
+# Cài thêm packages
+npm install expo-camera expo-image-picker expo-file-system
+npm install tesseract.js react-native-canvas
+npm install @react-native-async-storage/async-storage
+npm install zustand react-native-sqlite-storage
+
+# Chạy app
+npx expo start
+
+
+
+
+
+Cấu hình biến môi trường:
+# .env
+GEMINI_API_KEY=your_gemini_api_key
+OPENAI_API_KEY=your_openai_api_key  # Fallback
+
+
+
+📖 Hướng dẫn sử dụng
+1. Mở ứng dụng
+Không cần đăng nhập, mở app là dùng được ngay.
+
+2. Chụp ảnh
+Nhấn nút 📸 Camera để chụp ảnh mới
+
+Hoặc nhấn 🖼️ Gallery để chọn ảnh có sẵn
+
+3. Đợi xử lý
+Ứng dụng tự động OCR và dịch
+
+Hiển thị tiến trình: Đang OCR... → Đang dịch...
+
+4. Xem kết quả
+Văn bản gốc (tiếng Trung)
+
+Bản dịch (tiếng Việt)
+
+Độ chính xác (0-100%)
+
+5. Lưu & xem lịch sử
+Tự động lưu vào Lịch sử
+
+Mở tab 📋 History để xem lại
+
+Nhấn vào item để xem chi tiết
+
+🎯 Demo dữ liệu
+Input: Ảnh chứa văn bản
+Output: OCR & Dịch
+
+
+🎯 Kế hoạch phát triển
+Phase 1: Foundation ✅
+Setup React Native + TypeScript
+
+Camera & Gallery integration
+
+Tesseract.js integration
+
+Basic UI
+
+Phase 2: OCR & Translation 🔄
+Image preprocessing (Sharp/Canvas)
+
+Layout analysis (xử lý văn bản lộn xộn)
+
+Gemini API integration
+
+Fallback translation (OpenAI)
+
+Phase 3: History & Storage 🔄
+SQLite/IndexedDB setup
+
+Save/load history
+
+Export CSV/JSON
+
+Auto-cleanup old entries
+
+Phase 4: Polish & Performance 🔄
+Offline mode optimization
+
+Batch processing
+
+UI/UX improvements
+
+Performance optimization
+
+🤝 Đóng góp
+Chúng tôi rất hoan nghênh mọi đóng góp!
+
+Fork dự án
+
+Tạo branch mới (git checkout -b feature/amazing)
+
+Commit thay đổi (git commit -m 'Add amazing feature')
+
+Push lên branch (git push origin feature/amazing)
+
+Mở Pull Request
+
+📄 License
+MIT © huyletrannhat27-prog
+
