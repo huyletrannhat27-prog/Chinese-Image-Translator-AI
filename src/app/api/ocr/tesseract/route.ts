@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createWorker } from 'tesseract.js';
+import { createWorker, PSM } from 'tesseract.js';
 import sharp from 'sharp';
 
 export const maxDuration = 60;
@@ -22,24 +22,29 @@ export async function POST(req: NextRequest) {
 
     // Preprocess
     try {
-      buffer = await sharp(buffer)
+      const processed = await sharp(Buffer.from(buffer))
         .resize(2000, 2000, { fit: 'inside', withoutEnlargement: true })
         .grayscale()
         .normalize()
         .sharpen()
         .toBuffer();
+      buffer = Buffer.from(processed);
     } catch (e) {
       console.warn('Preprocess failed, using original');
     }
 
     // OCR with Tesseract
-    const worker = await createWorker('chi_sim', 1, {
-      logger: (m) => {
+    const worker = await createWorker({
+      logger: (m: { status: string; progress: number }) => {
         if (m.status === 'recognizing text') {
           console.log(`OCR: ${Math.round(m.progress * 100)}%`);
         }
       },
     });
+
+    await worker.loadLanguage('chi_sim');
+    await worker.initialize('chi_sim');
+    await worker.setParameters({ tessedit_pageseg_mode: PSM.AUTO });
 
     const { data } = await worker.recognize(buffer);
     await worker.terminate();
@@ -48,7 +53,10 @@ export async function POST(req: NextRequest) {
 
     // If no text, try with traditional
     if (text.length === 0) {
-      const worker2 = await createWorker('chi_tra', 1);
+      const worker2 = await createWorker();
+      await worker2.loadLanguage('chi_tra');
+      await worker2.initialize('chi_tra');
+      await worker2.setParameters({ tessedit_pageseg_mode: PSM.AUTO });
       const { data: data2 } = await worker2.recognize(buffer);
       await worker2.terminate();
       text = data2.text?.trim() || '';
