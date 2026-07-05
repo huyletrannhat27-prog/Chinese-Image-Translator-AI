@@ -3,43 +3,29 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Trash2, Download, Copy } from 'lucide-react';
-
-interface HistoryItem {
-  id: string;
-  originalText: string;
-  translation: string;
-  createdAt: string;
-}
+import { TranslationResult } from '@/types';
+import { HistoryStorage } from '@/lib/history/storage';
 
 export default function HistoryPage() {
-  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [history, setHistory] = useState<TranslationResult[]>([]);
 
   useEffect(() => {
-    const saved = localStorage.getItem('translation_history');
-    if (saved) {
-      try {
-        setHistory(JSON.parse(saved));
-      } catch (e) {
-        console.error('Failed to load history:', e);
-      }
-    }
+    setHistory(HistoryStorage.load());
   }, []);
 
   const deleteItem = (id: string) => {
-    const updated = history.filter(item => item.id !== id);
-    setHistory(updated);
-    localStorage.setItem('translation_history', JSON.stringify(updated));
+    setHistory(HistoryStorage.removeItem(id));
   };
 
   const clearAll = () => {
     if (confirm('Xóa tất cả lịch sử?')) {
+      HistoryStorage.clear();
       setHistory([]);
-      localStorage.removeItem('translation_history');
     }
   };
 
   const exportData = () => {
-    const data = JSON.stringify(history, null, 2);
+    const data = HistoryStorage.exportJSON();
     const blob = new Blob([data], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');

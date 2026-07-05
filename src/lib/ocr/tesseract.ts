@@ -31,23 +31,31 @@ export async function performOCR(
 
   await worker.setParameters({
     tessedit_pageseg_mode: psm,
-    tessedit_char_whitelist: '中文字符abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789,.!?;:()[]{}',
   });
 
   const result = await worker.recognize(imageData);
   await worker.terminate();
 
-  // Parse word boxes
-  const wordBoxes = result.data.words?.map((word) => ({
-    text: word.text || '',
-    confidence: word.confidence || 0,
-    bbox: {
-      x0: word.bbox?.x0 || 0,
-      y0: word.bbox?.y0 || 0,
-      x1: word.bbox?.x1 || 0,
-      y1: word.bbox?.y1 || 0,
-    },
-  })) || [];
+  // Parse word boxes từ cấu trúc lồng nhau blocks -> paragraphs -> lines -> words
+  const wordBoxes: OCRResult['wordBoxes'] = [];
+  for (const block of result.data.blocks || []) {
+    for (const paragraph of block.paragraphs || []) {
+      for (const line of paragraph.lines || []) {
+        for (const word of line.words || []) {
+          wordBoxes.push({
+            text: word.text || '',
+            confidence: word.confidence || 0,
+            bbox: {
+              x0: word.bbox?.x0 || 0,
+              y0: word.bbox?.y0 || 0,
+              x1: word.bbox?.x1 || 0,
+              y1: word.bbox?.y1 || 0,
+            },
+          });
+        }
+      }
+    }
+  }
 
   // Detect script
   const detectedScript = detectChineseScript(result.data.text || '');

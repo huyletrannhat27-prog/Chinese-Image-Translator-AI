@@ -1,41 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
-
-// In-memory storage (for demo)
-// In production, use a database
-let historyStore: any[] = [];
+import * as memoryStore from '@/lib/history/memoryStore';
 
 export async function GET(req: NextRequest) {
   const searchParams = req.nextUrl.searchParams;
   const limit = parseInt(searchParams.get('limit') || '50');
   const offset = parseInt(searchParams.get('offset') || '0');
 
-  const items = historyStore.slice(offset, offset + limit);
-  const total = historyStore.length;
+  const { items, total } = memoryStore.getAll(limit, offset);
 
-  return NextResponse.json({
-    items,
-    total,
-    limit,
-    offset,
-  });
+  return NextResponse.json({ items, total, limit, offset });
 }
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const newItem = {
-      id: `hist_${Date.now()}`,
-      ...body,
-      createdAt: new Date().toISOString(),
-    };
-
-    historyStore.unshift(newItem);
-
-    // Limit history size
-    if (historyStore.length > 15000) {
-      historyStore = historyStore.slice(0, 15000);
-    }
-
+    const newItem = memoryStore.add(body);
     return NextResponse.json(newItem, { status: 201 });
   } catch (error) {
     return NextResponse.json(
@@ -50,9 +29,9 @@ export async function DELETE(req: NextRequest) {
   const id = searchParams.get('id');
 
   if (id) {
-    historyStore = historyStore.filter(item => item.id !== id);
+    memoryStore.removeById(id);
   } else {
-    historyStore = [];
+    memoryStore.clear();
   }
 
   return NextResponse.json({ success: true });

@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { preprocessImage } from '@/lib/ocr/preprocessor';
 import { performOCR } from '@/lib/ocr/tesseract';
 
-// Endpoint OCR "trực tiếp" chỉ dùng chi_sim, hữu ích khi muốn ép nhận diện giản thể.
 export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
@@ -17,33 +16,41 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Convert to buffer
     const bytes = await imageFile.arrayBuffer();
     let buffer = Buffer.from(bytes);
 
+    // Preprocess (resize, grayscale, normalize, denoise, sharpen)
     try {
       buffer = Buffer.from(await preprocessImage(buffer));
     } catch (e) {
       console.warn('Preprocess failed, using original image:', e);
     }
 
-    let result = await performOCR(buffer, { language: 'chi_sim' });
+    // OCR (thử cả giản thể + phồn thể cùng lúc)
+    const result = await performOCR(buffer, { language: 'chi_sim+chi_tra' });
 
-    // Nếu không ra chữ nào, thử lại với phồn thể
     if (!result.text || result.text.trim().length === 0) {
-      result = await performOCR(buffer, { language: 'chi_tra' });
+      return NextResponse.json({
+        text: '',
+        confidence: 0,
+        detectedScript: 'simplified',
+        language: 'unknown',
+      });
     }
 
     return NextResponse.json({
       text: result.text.trim(),
       confidence: result.confidence / 100,
       detectedScript: result.detectedScript,
-      language: result.text.length > 0 ? 'chi_sim' : 'unknown',
+      language: 'chi_sim+chi_tra',
+      wordBoxes: result.wordBoxes,
     });
 
   } catch (error) {
     console.error('OCR Error:', error);
     return NextResponse.json(
-      { error: 'Lỗi OCR: ' + (error instanceof Error ? error.message : 'Unknown') },
+      { error: 'Lỗi OCR: ' + (error instanceof Error ? error.message : 'Unknown error') },
       { status: 500 }
     );
   }

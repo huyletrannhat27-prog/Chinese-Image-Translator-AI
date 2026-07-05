@@ -1,21 +1,9 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import Image from 'next/image';
-import Link from 'next/link';
 import { Camera, Upload, History, Copy, Download, Trash2, RefreshCw } from 'lucide-react';
-
-// Types
-interface TranslationResult {
-  id: string;
-  originalText: string;
-  translation: string;
-  detectedScript: 'simplified' | 'traditional' | 'mixed';
-  confidence: number;
-  segments: Array<{ original: string; translated: string }>;
-  processingTime: number;
-  createdAt: Date;
-}
+import { TranslationResult } from '@/types';
+import { HistoryStorage } from '@/lib/history/storage';
 
 export default function Home() {
   // States
@@ -33,28 +21,10 @@ export default function Home() {
   const [cameraActive, setCameraActive] = useState(false);
   const [stream, setStream] = useState<MediaStream | null>(null);
 
-  // Load history from localStorage on mount
+  // Load history on mount
   useEffect(() => {
-    const saved = localStorage.getItem('translation_history');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        setHistory(parsed.map((item: any) => ({
-          ...item,
-          createdAt: new Date(item.createdAt),
-        })));
-      } catch (e) {
-        console.error('Failed to load history:', e);
-      }
-    }
+    setHistory(HistoryStorage.load());
   }, []);
-
-  // Save history to localStorage
-  useEffect(() => {
-    if (history.length > 0) {
-      localStorage.setItem('translation_history', JSON.stringify(history));
-    }
-  }, [history]);
 
   // Start camera
   const startCamera = async () => {
@@ -95,7 +65,7 @@ export default function Home() {
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
         setImage(dataUrl);
-        
+
         // Convert dataUrl to File
         fetch(dataUrl)
           .then(res => res.blob())
@@ -137,6 +107,7 @@ export default function Home() {
     setError(null);
     setResult(null);
     setProgress(10);
+    const startedAt = Date.now();
 
     try {
       // Step 1: OCR
@@ -188,7 +159,7 @@ export default function Home() {
         detectedScript: translateData.detectedScript || 'simplified',
         confidence: ocrData.confidence || 0.85,
         segments: translateData.segments || [{ original: ocrData.text, translated: translateData.translation }],
-        processingTime: Date.now() - Date.now() + 2000,
+        processingTime: Date.now() - startedAt,
         createdAt: new Date(),
       };
 
@@ -196,7 +167,8 @@ export default function Home() {
       setProgress(100);
 
       // Save to history
-      setHistory(prev => [resultData, ...prev]);
+      const updatedHistory = HistoryStorage.addItem(resultData);
+      setHistory(updatedHistory);
 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Có lỗi xảy ra khi xử lý');
@@ -220,14 +192,15 @@ export default function Home() {
   // Clear history
   const clearHistory = () => {
     if (confirm('Bạn có chắc muốn xóa toàn bộ lịch sử?')) {
+      HistoryStorage.clear();
       setHistory([]);
-      localStorage.removeItem('translation_history');
     }
   };
 
   // Delete single history item
   const deleteHistoryItem = (id: string) => {
-    setHistory(prev => prev.filter(item => item.id !== id));
+    const updated = HistoryStorage.removeItem(id);
+    setHistory(updated);
   };
 
   // Reset all
@@ -383,6 +356,7 @@ export default function Home() {
           {/* Preview */}
           {image && (
             <div className="relative rounded-xl overflow-hidden bg-gray-100 dark:bg-slate-700">
+              {/* eslint-disable-next-line @next/next/no-img-element -- local base64 preview, not a remote asset to optimize */}
               <img src={image} alt="Uploaded" className="w-full max-h-64 object-contain" />
             </div>
           )}
@@ -546,4 +520,18 @@ export default function Home() {
                           e.stopPropagation();
                           deleteHistoryItem(item.id);
                         }}
-                        className="p-1 hover:bg-red-100 dark:hover:
+                        className="p-1 hover:bg-red-100 dark:hover:bg-red-900/20 rounded transition"
+                      >
+                        <Trash2 size={14} className="text-red-400" />
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

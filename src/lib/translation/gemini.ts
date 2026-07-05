@@ -14,7 +14,7 @@ export class GeminiTranslator {
   private genAI: GoogleGenerativeAI;
   private model: string;
 
-  constructor(apiKey: string, model: string = 'gemini-1.5-flash') {
+  constructor(apiKey: string, model: string = 'gemini-2.5-flash') {
     this.genAI = new GoogleGenerativeAI(apiKey);
     this.model = model;
   }

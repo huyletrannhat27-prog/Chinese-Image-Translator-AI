@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-
-// In-memory storage (for demo)
-let historyStore: any[] = [];
+import * as memoryStore from '@/lib/history/memoryStore';
 
 export async function GET(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const item = historyStore.find(item => item.id === params.id);
+  const item = memoryStore.getById(params.id);
 
   if (!item) {
     return NextResponse.json(
@@ -23,6 +21,6 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  historyStore = historyStore.filter(item => item.id !== params.id);
+  memoryStore.removeById(params.id);
   return NextResponse.json({ success: true });
 }

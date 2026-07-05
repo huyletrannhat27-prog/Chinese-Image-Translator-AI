@@ -23,3 +23,7 @@ users
 
   INDEX idx_email (email)
   INDEX idx_provider_provider_id (provider, provider_id)
+```
+
+> Đây mới là schema nháp cho Phase 6 (Auth). Các bảng khác (translation_history,
+> api_usage_logs...) sẽ được bổ sung khi thực sự cần đến database.

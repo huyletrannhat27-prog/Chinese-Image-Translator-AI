@@ -1,40 +1,29 @@
-# 🀄 Chinese Image Translator
+# 🀄 Chinese Image Translator AI
 
-[![React Native](https://img.shields.io/badge/React_Native-20232A?style=flat&logo=react&logoColor=61DAFB)](https://reactnative.dev/)
+[![Next.js](https://img.shields.io/badge/Next.js_14-000000?style=flat&logo=next.js&logoColor=white)](https://nextjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Tesseract](https://img.shields.io/badge/Tesseract.js-3C3C3C?style=flat&logo=tesseract&logoColor=white)](https://github.com/naptha/tesseract.js)
 [![Gemini](https://img.shields.io/badge/Gemini-8E75B2?style=flat&logo=google&logoColor=white)](https://deepmind.google/technologies/gemini/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-**Ứng dụng dịch tiếng Trung từ hình ảnh - Không cần đăng nhập, chụp ảnh là dịch ngay!**
-
----
-
-## 📱 Demo
-
-| Chụp ảnh | OCR | Dịch |
-|---|---|---|
-| ![Camera](screenshots/camera.jpg) | ![OCR](screenshots/ocr.jpg) | ![Translate](screenshots/translate.jpg) |
+**Ứng dụng web dịch tiếng Trung từ hình ảnh - Không cần đăng nhập, chụp/upload ảnh là dịch ngay!**
 
 ---
 
 ## ✨ Tính năng
 
 ### 🎯 Tính năng chính
-- **📸 Chụp ảnh ngay** - Mở camera, chụp ảnh, dịch tức thì
-- **🖼️ Chọn từ thư viện** - Hỗ trợ ảnh có sẵn trong máy
-- **✍️ Chữ viết tay** - Nhận diện cả chữ viết tay
-- **🔀 Văn bản lộn xộn** - Tự động phân tích layout, nhóm cụm từ
+- **📸 Chụp ảnh trực tiếp** - Dùng camera trình duyệt, chụp là dịch
+- **🖼️ Upload từ máy** - Hỗ trợ ảnh có sẵn (tối đa 10MB)
 - **🌏 Giản thể & Phồn thể** - Tự động nhận diện và dịch
-- **📋 Lịch sử** - Lưu 15,000+ bản dịch, xem lại bất kỳ lúc nào
-- **⬇️ Xuất dữ liệu** - Export lịch sử ra CSV/JSON
+- **📖 Phân đoạn** - Hiển thị từng câu gốc + câu dịch song song
+- **📋 Lịch sử** - Lưu lại các bản dịch trong trình duyệt (localStorage), xem lại/xoá/export JSON
+- **⬇️ Tải kết quả** - Export bản dịch ra file .txt
 
 ### ⚡ Điểm nổi bật
-- ✅ **Không cần đăng nhập** - Dùng ngay khi tải app
-- ✅ **Offline-first** - OCR hoạt động không cần mạng
-- ✅ **Dịch chính xác** - Sử dụng Gemini 1.5 Flash
-- ✅ **Xử lý nhanh** - < 3 giây cho mỗi ảnh
-- ✅ **Bảo mật** - Ảnh không upload lên server
+- ✅ **Không cần đăng nhập** - Dùng ngay khi mở trang
+- ✅ **Dịch chính xác** - Sử dụng Gemini 1.5 Flash (có fallback OpenAI / Claude)
+- ✅ **Bảo mật** - Ảnh xử lý theo request, không lưu trữ vĩnh viễn trên server
 
 ---
 
@@ -42,155 +31,117 @@
 
 | Thành phần | Công nghệ | Vai trò |
 |---|---|---|
-| **Framework** | React Native / Expo | Ứng dụng di động |
+| **Framework** | Next.js 14 (App Router) | Web app, API routes |
 | **Ngôn ngữ** | TypeScript | Type-safe |
-| **OCR** | Tesseract.js v4 | Nhận diện chữ Trung |
-| **Tiền xử lý** | Sharp / Canvas | Tăng chất lượng ảnh |
-| **Dịch thuật** | Google Gemini 1.5 Flash | Dịch AI |
-| **Fallback** | GPT-4o mini | Dịch AI (dự phòng) |
-| **Lưu trữ** | AsyncStorage + SQLite | Lịch sử + cài đặt |
-| **State** | Zustand | Quản lý state |
+| **UI** | Tailwind CSS + Radix UI | Giao diện responsive |
+| **OCR** | Tesseract.js v6 (server-side) | Nhận diện chữ Trung |
+| **Tiền xử lý ảnh** | Sharp | Resize, grayscale, tăng độ tương phản |
+| **Dịch thuật** | Google Gemini 1.5 Flash | Dịch AI chính |
+| **Fallback dịch** | OpenAI GPT-4o mini / Claude 3 Haiku | Dịch AI dự phòng |
+| **Lịch sử** | localStorage (client) | Không cần database |
 
 ---
 
 ## 🔄 Luồng xử lý
 
-flowchart TD
-    A[📸 Chụp ảnh] --> B[🖼️ Tiền xử lý]
-    B --> C[📝 OCR - Tesseract.js]
-    C --> D[🔤 Phát hiện ngôn ngữ]
-    D --> E{Confidence > 60%?}
-    E -- Yes --> F[🤖 Dịch bằng Gemini]
-    E -- No --> G[🔄 Retry với preprocessing]
-    G --> C
-    F --> H[📋 Lưu lịch sử]
-    H --> I[🎯 Hiển thị kết quả]
+```
+📸 Chụp/Upload ảnh
+      ↓
+🖼️ Tiền xử lý (Sharp: resize, grayscale, normalize, sharpen)
+      ↓
+📝 OCR (Tesseract.js, chi_sim + chi_tra)
+      ↓
+🔤 Phát hiện Giản thể / Phồn thể
+      ↓
+🤖 Dịch bằng Gemini (kèm phân đoạn câu)
+      ↓
+📋 Lưu lịch sử (localStorage) + hiển thị kết quả
+```
 
-🚀 Cài đặt & Chạy:
+---
 
-    - Yêu cầu hệ thống:
+## 🚀 Cài đặt & Chạy
 
-        Node.js >= 18
+### Yêu cầu hệ thống
+- Node.js >= 18
+- npm (hoặc yarn/pnpm)
 
-        npm / yarn / bun
+### Clone & Cài đặt
 
-        iOS: Xcode 14+ / Android: Android Studio
+```bash
+git clone https://github.com/huyletrannhat27-prog/Chinese-Image-Translator-AI.git
+cd Chinese-Image-Translator-AI
 
-        Expo CLI
-
-
-
-Clone & Cài đặt:
-# Clone repo
-git clone https://github.com/huyletrannhat27-prog/chinese-image-translator.git
-cd chinese-image-translator
-
-# Cài dependencies
 npm install
+```
 
-# Cài thêm packages
-npm install expo-camera expo-image-picker expo-file-system
-npm install tesseract.js react-native-canvas
-npm install @react-native-async-storage/async-storage
-npm install zustand react-native-sqlite-storage
+### Cấu hình biến môi trường
 
-# Chạy app
-npx expo start
+Copy `.env.example` thành `.env` rồi điền API key:
 
+```bash
+cp .env.example .env
+```
 
-
-
-
-Cấu hình biến môi trường:
-# .env
+```env
+# Bắt buộc để dịch thật (nếu bỏ trống, app vẫn chạy nhưng trả bản dịch [Mock])
 GEMINI_API_KEY=your_gemini_api_key
-OPENAI_API_KEY=your_openai_api_key  # Fallback
 
+# Tuỳ chọn - fallback khi không dùng Gemini
+OPENAI_API_KEY=your_openai_api_key
+CLAUDE_API_KEY=your_claude_api_key
+```
 
+Lấy Gemini API key miễn phí tại: https://aistudio.google.com/app/apikey
 
-📖 Hướng dẫn sử dụng
-1. Mở ứng dụng
-Không cần đăng nhập, mở app là dùng được ngay.
+### Chạy dev server
 
-2. Chụp ảnh
-Nhấn nút 📸 Camera để chụp ảnh mới
+```bash
+npm run dev
+```
 
-Hoặc nhấn 🖼️ Gallery để chọn ảnh có sẵn
+Mở [http://localhost:3000](http://localhost:3000).
 
-3. Đợi xử lý
-Ứng dụng tự động OCR và dịch
+### Build production
 
-Hiển thị tiến trình: Đang OCR... → Đang dịch...
+```bash
+npm run build
+npm run start
+```
 
-4. Xem kết quả
-Văn bản gốc (tiếng Trung)
+---
 
-Bản dịch (tiếng Việt)
+## 📖 Hướng dẫn sử dụng
 
-Độ chính xác (0-100%)
+1. **Mở trang** - Không cần đăng nhập, dùng ngay.
+2. **Chụp/Upload ảnh** - Nhấn "Mở Camera" để chụp, hoặc "Chọn ảnh từ máy".
+3. **Đợi xử lý** - App tự động OCR rồi dịch, có progress bar (Đang OCR... → Đang dịch...).
+4. **Xem kết quả** - Văn bản gốc, bản dịch tiếng Việt, độ chính xác, loại chữ (giản thể/phồn thể).
+5. **Lưu & xem lịch sử** - Tự động lưu vào lịch sử; nhấn biểu tượng 📋 để mở, hoặc vào `/history`.
 
-5. Lưu & xem lịch sử
-Tự động lưu vào Lịch sử
+---
 
-Mở tab 📋 History để xem lại
+## 🎯 Kế hoạch phát triển
 
-Nhấn vào item để xem chi tiết
+Xem chi tiết từng phase tại [`_docs/02_phases.md`](_docs/02_phases.md). Tóm tắt:
 
-🎯 Demo dữ liệu
-Input: Ảnh chứa văn bản
-Output: OCR & Dịch
+- ✅ **Phase 1 — Foundation**: Next.js + Tailwind, upload/camera, API structure cơ bản
+- ✅ **Phase 2 — OCR**: Tesseract.js server-side, tiền xử lý ảnh với Sharp
+- 🔄 **Phase 3 — Dịch thuật nâng cao**: chọn provider (Gemini/OpenAI/Claude) và ngôn ngữ đích trên UI
+- 🔄 **Phase 4 — Tối ưu**: rate limiting, cache, retry mechanism
+- 🔄 **Phase 5 — Lịch sử nâng cao**: export CSV/PDF, batch nhiều ảnh
+- ⬜ **Phase 6 — Auth & Admin**: đăng nhập, quản lý tier người dùng
 
+---
 
-🎯 Kế hoạch phát triển
-Phase 1: Foundation ✅
-Setup React Native + TypeScript
+## 🤝 Đóng góp
 
-Camera & Gallery integration
+1. Fork dự án
+2. Tạo branch mới (`git checkout -b feature/amazing`)
+3. Commit thay đổi (`git commit -m 'Add amazing feature'`)
+4. Push lên branch (`git push origin feature/amazing`)
+5. Mở Pull Request
 
-Tesseract.js integration
+## 📄 License
 
-Basic UI
-
-Phase 2: OCR & Translation 🔄
-Image preprocessing (Sharp/Canvas)
-
-Layout analysis (xử lý văn bản lộn xộn)
-
-Gemini API integration
-
-Fallback translation (OpenAI)
-
-Phase 3: History & Storage 🔄
-SQLite/IndexedDB setup
-
-Save/load history
-
-Export CSV/JSON
-
-Auto-cleanup old entries
-
-Phase 4: Polish & Performance 🔄
-Offline mode optimization
-
-Batch processing
-
-UI/UX improvements
-
-Performance optimization
-
-🤝 Đóng góp
-Chúng tôi rất hoan nghênh mọi đóng góp!
-
-Fork dự án
-
-Tạo branch mới (git checkout -b feature/amazing)
-
-Commit thay đổi (git commit -m 'Add amazing feature')
-
-Push lên branch (git push origin feature/amazing)
-
-Mở Pull Request
-
-📄 License
 MIT © huyletrannhat27-prog
-
