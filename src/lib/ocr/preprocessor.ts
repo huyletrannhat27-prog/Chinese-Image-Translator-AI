@@ -15,8 +15,8 @@ export async function preprocessImage(
   options: PreprocessOptions = {}
 ): Promise<Buffer> {
   const {
-    maxWidth = 2000,
-    maxHeight = 2000,
+    maxWidth = 1600,
+    maxHeight = 1600,
     grayscale = true,
     normalize = true,
     sharpen = true,
@@ -24,40 +24,43 @@ export async function preprocessImage(
     denoise = true,
   } = options;
 
+  const metadata = await sharp(buffer).metadata();
+  const width = metadata.width || 0;
+  const height = metadata.height || 0;
+  const isLarge = (width || 0) > 2000 || (height || 0) > 2000;
+
   let processed = sharp(buffer);
 
-  // Resize
-  processed = processed.resize(maxWidth, maxHeight, {
-    fit: 'inside',
-    withoutEnlargement: true,
-  });
+  processed = processed.resize(
+    isLarge ? maxWidth : Math.min(width || maxWidth, maxWidth),
+    isLarge ? maxHeight : Math.min(height || maxHeight, maxHeight),
+    {
+      fit: 'inside',
+      withoutEnlargement: true,
+    }
+  );
 
-  // Grayscale
   if (grayscale) {
     processed = processed.grayscale();
   }
 
-  // Normalize (contrast + brightness)
   if (normalize) {
     processed = processed.normalize();
   }
 
-  // Denoise
   if (denoise) {
-    processed = processed.median(3);
+    processed = processed.median(2);
   }
 
-  // Sharpen
   if (sharpen) {
     processed = processed.sharpen();
   }
 
-  // Threshold
   if (threshold !== undefined && threshold >= 0 && threshold <= 255) {
     processed = processed.threshold(threshold);
   }
 
-  return processed.toBuffer();
+  return processed.toBuffer({ resolveWithObject: false });
 }
 
 // Detect image quality

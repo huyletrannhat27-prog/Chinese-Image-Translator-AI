@@ -1,3 +1,5 @@
+// next.config.js
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // tesseract.js spawns a worker_thread that requires its own worker-script
@@ -27,6 +29,8 @@ const nextConfig = {
       },
     ];
   },
+  compress: true,
+  productionBrowserSourceMaps: false,
 };
 
 module.exports = nextConfig;
