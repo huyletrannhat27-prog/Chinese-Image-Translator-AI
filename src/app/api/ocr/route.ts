@@ -16,8 +16,8 @@ export async function POST(req: NextRequest) {
     const bytes = await imageFile.arrayBuffer();
     const buffer = Buffer.from(bytes);
     const processedBuffer = await preprocessImage(buffer, {
-      maxWidth: 2000,
-      maxHeight: 2000,
+      maxWidth: 1400,
+      maxHeight: 1400,
       grayscale: true,
       normalize: true,
       sharpen: true,
