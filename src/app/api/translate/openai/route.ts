@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
     // Kiểm tra API key
     if (!process.env.OPENAI_API_KEY) {
       // Fallback: gọi Gemini
-      const geminiResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/translate`, {
+      const geminiResponse = await fetch(`${req.nextUrl.origin}/api/translate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text, target }),

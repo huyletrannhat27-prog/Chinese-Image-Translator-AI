@@ -1,8 +1,7 @@
 import { useState, useCallback } from 'react';
-import { performOCR } from '@/lib/ocr/tesseract';
+import { performOCR, OCRResult } from '@/lib/ocr/tesseract';
 import { preprocessImage } from '@/lib/ocr/preprocessor';
 import { LayoutAnalyzer } from '@/lib/ocr/layoutAnalyzer';
-import type { OCRResult } from '@/types';
 
 interface UseOCROptions {
   language?: 'chi_sim' | 'chi_tra' | 'chi_sim+chi_tra';
@@ -66,9 +65,9 @@ export function useOCR(options: UseOCROptions = {}) {
       setProgress(80);
 
       // Analyze layout
-      if (analyzeLayout && (ocrResult.wordBoxes?.length ?? 0) > 0) {
+      if (analyzeLayout && ocrResult.wordBoxes.length > 0) {
         const analyzer = new LayoutAnalyzer();
-        const segments = (ocrResult.wordBoxes ?? []).map((word) => ({
+        const segments = ocrResult.wordBoxes.map(word => ({
           text: word.text,
           bbox: {
             x: word.bbox.x0,

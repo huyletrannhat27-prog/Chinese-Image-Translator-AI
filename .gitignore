@@ -43,3 +43,9 @@ yarn-error.log*
 *.pem
 *.key
 *.crt
+
+# Tesseract language data (auto-downloaded on first OCR run)
+*.traineddata
+
+# TypeScript build cache
+*.tsbuildinfo

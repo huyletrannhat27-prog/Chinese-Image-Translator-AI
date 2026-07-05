@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createWorker, PSM } from 'tesseract.js';
-import sharp from 'sharp';
+import { preprocessImage } from '@/lib/ocr/preprocessor';
+import { performOCR } from '@/lib/ocr/tesseract';
 
+// Endpoint OCR "trực tiếp" chỉ dùng chi_sim, hữu ích khi muốn ép nhận diện giản thể.
 export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
@@ -16,57 +17,27 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Convert to buffer
     const bytes = await imageFile.arrayBuffer();
     let buffer = Buffer.from(bytes);
 
-    // Preprocess
     try {
-      const processed = await sharp(Buffer.from(buffer))
-        .resize(2000, 2000, { fit: 'inside', withoutEnlargement: true })
-        .grayscale()
-        .normalize()
-        .sharpen()
-        .toBuffer();
-      buffer = Buffer.from(processed);
+      buffer = Buffer.from(await preprocessImage(buffer));
     } catch (e) {
-      console.warn('Preprocess failed, using original');
+      console.warn('Preprocess failed, using original image:', e);
     }
 
-    // OCR with Tesseract
-    const worker = await createWorker({
-      logger: (m: { status: string; progress: number }) => {
-        if (m.status === 'recognizing text') {
-          console.log(`OCR: ${Math.round(m.progress * 100)}%`);
-        }
-      },
-    });
+    let result = await performOCR(buffer, { language: 'chi_sim' });
 
-    await worker.loadLanguage('chi_sim');
-    await worker.initialize('chi_sim');
-    await worker.setParameters({ tessedit_pageseg_mode: PSM.AUTO });
-
-    const { data } = await worker.recognize(buffer);
-    await worker.terminate();
-
-    let text = data.text?.trim() || '';
-
-    // If no text, try with traditional
-    if (text.length === 0) {
-      const worker2 = await createWorker();
-      await worker2.loadLanguage('chi_tra');
-      await worker2.initialize('chi_tra');
-      await worker2.setParameters({ tessedit_pageseg_mode: PSM.AUTO });
-      const { data: data2 } = await worker2.recognize(buffer);
-      await worker2.terminate();
-      text = data2.text?.trim() || '';
+    // Nếu không ra chữ nào, thử lại với phồn thể
+    if (!result.text || result.text.trim().length === 0) {
+      result = await performOCR(buffer, { language: 'chi_tra' });
     }
 
     return NextResponse.json({
-      text,
-      confidence: data.confidence || 0.8,
-      detectedScript: detectChineseScript(text),
-      language: text.length > 0 ? 'chi_sim' : 'unknown',
+      text: result.text.trim(),
+      confidence: result.confidence / 100,
+      detectedScript: result.detectedScript,
+      language: result.text.length > 0 ? 'chi_sim' : 'unknown',
     });
 
   } catch (error) {
@@ -76,19 +47,4 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
-}
-
-function detectChineseScript(text: string): 'simplified' | 'traditional' | 'mixed' {
-  if (!text) return 'simplified';
-  const simplified = ['学', '国', '开', '关', '门', '问', '对', '说', '话', '书', '写'];
-  const traditional = ['學', '國', '開', '關', '門', '問', '對', '說', '話', '書', '寫'];
-  let s = 0,
-    t = 0;
-  for (const char of text) {
-    if (simplified.includes(char)) s++;
-    if (traditional.includes(char)) t++;
-  }
-  if (s > t * 2) return 'simplified';
-  if (t > s * 2) return 'traditional';
-  return s > 0 && t > 0 ? 'mixed' : 'simplified';
 }

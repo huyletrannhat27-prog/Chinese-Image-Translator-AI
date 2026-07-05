@@ -1,66 +1,56 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { preprocessImage } from '@/lib/ocr/preprocessor';
 import { performOCR } from '@/lib/ocr/tesseract';
-import { LayoutAnalyzer } from '@/lib/ocr/layoutAnalyzer';
+
+export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
-    const imageFile = formData.get('image');
-    const analyzeLayout = formData.get('analyzeLayout') === 'true';
+    const imageFile = formData.get('image') as File;
 
-    if (!imageFile || typeof imageFile === 'string' || !('arrayBuffer' in imageFile)) {
-      return NextResponse.json({ error: 'Không tìm thấy ảnh' }, { status: 400 });
+    if (!imageFile) {
+      return NextResponse.json(
+        { error: 'Không tìm thấy ảnh' },
+        { status: 400 }
+      );
     }
 
+    // Convert to buffer
     const bytes = await imageFile.arrayBuffer();
-    const buffer = Buffer.from(bytes);
-    const processedBuffer = await preprocessImage(buffer, {
-      maxWidth: 1400,
-      maxHeight: 1400,
-      grayscale: true,
-      normalize: true,
-      sharpen: true,
-    });
+    let buffer = Buffer.from(bytes);
 
-    const ocrResult = await performOCR(processedBuffer, { language: 'chi_sim+chi_tra' });
+    // Preprocess (resize, grayscale, normalize, denoise, sharpen)
+    try {
+      buffer = Buffer.from(await preprocessImage(buffer));
+    } catch (e) {
+      console.warn('Preprocess failed, using original image:', e);
+    }
 
-    let layoutInfo = null;
-    if (analyzeLayout && (ocrResult.wordBoxes?.length ?? 0) > 0) {
-      const analyzer = new LayoutAnalyzer();
-      const segments = (ocrResult.wordBoxes ?? []).map((word) => ({
-        text: word.text,
-        bbox: {
-          x: word.bbox.x0,
-          y: word.bbox.y0,
-          width: word.bbox.x1 - word.bbox.x0,
-          height: word.bbox.y1 - word.bbox.y0,
-        },
-        confidence: word.confidence,
-      }));
+    // OCR (thử cả giản thể + phồn thể cùng lúc)
+    const result = await performOCR(buffer, { language: 'chi_sim+chi_tra' });
 
-      const analysis = analyzer.analyzeLayout(segments);
-      if (analysis.layout !== 'simple') {
-        ocrResult.text = analysis.text;
-        layoutInfo = {
-          layout: analysis.layout,
-          columns: analysis.columns.length,
-          groups: analysis.groups.length,
-        };
-      }
+    if (!result.text || result.text.trim().length === 0) {
+      return NextResponse.json({
+        text: '',
+        confidence: 0,
+        detectedScript: 'simplified',
+        language: 'unknown',
+      });
     }
 
     return NextResponse.json({
-      text: ocrResult.text,
-      confidence: ocrResult.confidence,
-      detectedScript: ocrResult.detectedScript,
-      layout: layoutInfo,
-      wordBoxes: ocrResult.wordBoxes ?? [],
+      text: result.text.trim(),
+      confidence: result.confidence / 100,
+      detectedScript: result.detectedScript,
+      language: 'chi_sim+chi_tra',
+      wordBoxes: result.wordBoxes,
     });
+
   } catch (error) {
-    console.error('OCR API error:', error);
+    console.error('OCR Error:', error);
     return NextResponse.json(
-      { error: 'Lỗi OCR: ' + (error instanceof Error ? error.message : 'Unknown') },
+      { error: 'Lỗi OCR: ' + (error instanceof Error ? error.message : 'Unknown error') },
       { status: 500 }
     );
   }
