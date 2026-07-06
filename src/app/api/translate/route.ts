@@ -36,7 +36,10 @@ export async function POST(req: NextRequest) {
       model: 'gemini-2.5-flash',
       generationConfig: {
         temperature: 0.3,
-        maxOutputTokens: 1024,
+        // 1024 quá thấp cho gemini-2.5-flash: model "thinking" tiêu tốn một phần
+        // token trước khi trả JSON, dễ bị cắt cụt giữa chừng khi văn bản dài/lộn
+        // xộn (nhiều segments) - tăng lên để tránh JSON bị hỏng do cắt cụt.
+        maxOutputTokens: 4096,
         topP: 0.95,
         topK: 40,
       },
@@ -46,25 +49,7 @@ export async function POST(req: NextRequest) {
     const response = await result.response;
     const content = response.text();
 
-    // Parse JSON response
-    let parsed;
-    try {
-      // Extract JSON from response
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        parsed = JSON.parse(jsonMatch[0]);
-      } else {
-        // Fallback: try to parse entire response
-        parsed = JSON.parse(content);
-      }
-    } catch (parseError) {
-      console.warn('Failed to parse Gemini response, using raw text:', content);
-      parsed = {
-        translation: content,
-        script: 'simplified',
-        segments: [{ original: text, translated: content }],
-      };
-    }
+    const parsed = parseTranslationResponse(content, text);
 
     return NextResponse.json({
       translation: parsed.translation || content,
@@ -83,21 +68,55 @@ export async function POST(req: NextRequest) {
   }
 }
 
+// Parse phản hồi của Gemini thành { translation, script, segments, confidence }.
+// Phải chịu được 2 kiểu lỗi thường gặp: (1) model bọc JSON trong khối markdown
+// ```json ... ```, (2) JSON bị cắt cụt giữa chừng do vượt maxOutputTokens.
+// Không bao giờ để lọt text/markdown thô ra ngoài cho người dùng thấy.
+function parseTranslationResponse(
+  content: string,
+  originalText: string
+): { translation: string; script?: string; segments?: Array<{ original: string; translated: string }>; confidence?: number } {
+  // Bóc khối markdown ```json ... ``` hoặc ``` ... ``` nếu có
+  const fenceMatch = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+  const unfenced = fenceMatch ? fenceMatch[1] : content;
+
+  try {
+    const jsonMatch = unfenced.match(/\{[\s\S]*\}/);
+    return JSON.parse(jsonMatch ? jsonMatch[0] : unfenced);
+  } catch (parseError) {
+    console.warn('Failed to parse Gemini response as JSON, trying partial recovery:', content);
+  }
+
+  // JSON bị cắt cụt (thiếu dấu đóng) - cố lấy riêng field "translation" bằng regex
+  // thay vì hiện nguyên JSON thô ra cho người dùng.
+  const translationField = unfenced.match(/"translation"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+  if (translationField) {
+    return {
+      translation: translationField[1].replace(/\\n/g, '\n').replace(/\\"/g, '"'),
+      script: 'simplified',
+      segments: [{ original: originalText, translated: translationField[1] }],
+    };
+  }
+
+  // Không phục hồi được gì - báo lỗi thay vì hiện rác cho người dùng
+  throw new Error('Không đọc được phản hồi dịch từ Gemini, vui lòng thử lại');
+}
+
 // Build translation prompt
 function buildTranslationPrompt(text: string, target: string): string {
   return `Bạn là một dịch giả chuyên nghiệp với 10 năm kinh nghiệm dịch tiếng Trung - Việt.
 
 QUY TẮC:
-1. Dịch chính xác, giữ nguyên ý nghĩa và ngữ cảnh
-2. Thành ngữ: tìm thành ngữ tương đương trong tiếng Việt
-3. Văn phong: tự nhiên, không máy móc
-4. Phân biệt: biết cách tách các cụm từ khi văn bản lộn xộn
-5. Chữ viết tay: đoán chữ nếu OCR sai
+1. Dịch theo NGHĨA TỔNG THỂ của câu/đoạn - đọc hiểu ngữ cảnh trước, sau đó diễn đạt lại tự nhiên bằng tiếng Việt. TUYỆT ĐỐI không dịch máy móc từng chữ/từng từ một.
+2. Thành ngữ, tục ngữ: dịch theo nghĩa bóng, ưu tiên thành ngữ tương đương trong tiếng Việt thay vì dịch nghĩa đen.
+3. Văn phong: tự nhiên như người bản xứ viết, không lộ dấu vết dịch máy.
+4. Chữ viết tay hoặc nghi ngờ OCR nhận sai: dựa vào ngữ cảnh xung quanh để đoán đúng chữ trước khi dịch.
 
-XỬ LÝ VĂN BẢN LỘN XỘN:
-- Nếu văn bản có nhiều dòng lộn xộn, hãy sắp xếp theo logic
-- Phát hiện các cụm từ liên quan và nhóm lại
-- Bỏ qua các từ/cụm từ không liên quan
+XỬ LÝ VĂN BẢN THỰC TẾ TỪ ẢNH CHỤP (thường không sạch như văn bản đánh máy):
+- Ảnh có thể chứa NHIỀU đoạn văn bản không liên quan nhau (nhiều biển hiệu, nhiều dòng rời rạc trong cùng 1 khung hình) - hãy dịch riêng từng đoạn theo đúng ý của nó, không cố ghép chúng thành 1 câu duy nhất.
+- Ảnh có thể xen lẫn NHIỀU NGÔN NGỮ khác nhau (tiếng Trung lẫn tiếng Anh, số, ký hiệu...) - CHỈ VÌ có ngôn ngữ khác xen vào KHÔNG có nghĩa là từ chối dịch. Vẫn dịch phần tiếng Trung sang tiếng Việt bình thường, phần tiếng Anh/số có thể giữ nguyên hoặc dịch tuỳ ngữ cảnh.
+- LOẠI BỎ hoàn toàn các ký tự/chuỗi vô nghĩa do lỗi nhận diện OCR (không tạo thành từ hay cụm từ có nghĩa trong bất kỳ ngôn ngữ nào, ví dụ ký tự lạ, chữ bị vỡ nét, ký hiệu rời rạc) - không đưa chúng vào bản dịch, không cố "đoán nghĩa" cho phần rác nhiễu này.
+- Chỉ khi TOÀN BỘ văn bản đều là rác/vô nghĩa (không còn phần nào dịch được) mới trả "translation" rỗng.
 
 ĐẦU RA JSON:
 {

@@ -48,6 +48,19 @@ export async function preprocessImage(
     processed = processed.normalize();
   }
 
+  // Biển hiệu/bảng điện tử thường là nền tối chữ sáng - Tesseract được huấn
+  // luyện cho chữ tối trên nền sáng nên dễ đọc rỗng/sai với ảnh kiểu này nếu
+  // không đảo màu lại trước khi nhận diện.
+  try {
+    const stats = await processed.clone().stats();
+    const meanBrightness = stats.channels[0]?.mean ?? 128;
+    if (meanBrightness < 100) {
+      processed = processed.negate();
+    }
+  } catch (e) {
+    console.warn('Brightness check failed, skip auto-invert:', e);
+  }
+
   if (denoise) {
     processed = processed.median(2);
   }
