@@ -14,12 +14,18 @@ export interface OCRResult {
 export async function performOCR(
   imageData: string | Buffer,
   options?: {
-    language?: 'chi_sim' | 'chi_tra' | 'chi_sim+chi_tra';
+    // Cho phép ghép thêm ngôn ngữ khác (vd 'chi_sim+chi_tra+eng') để đọc được
+    // ảnh có xen lẫn tiếng Anh/số thay vì ép tất cả về chữ Hán và ra rác.
+    language?: string;
     psm?: PSM;
+    // Từ có độ tin cậy dưới ngưỡng này bị coi là nhiễu OCR (vết bẩn, hạt ảnh...)
+    // và bị loại khỏi văn bản trước khi đưa qua dịch.
+    minWordConfidence?: number;
   }
 ): Promise<OCRResult> {
-  const language = options?.language || 'chi_sim+chi_tra';
+  const language = options?.language || 'chi_sim+chi_tra+eng';
   const psm = options?.psm || PSM.AUTO;
+  const minWordConfidence = options?.minWordConfidence ?? 35;
 
   const worker = await createWorker(language, 1, {
     logger: (m) => {
@@ -33,15 +39,22 @@ export async function performOCR(
     tessedit_pageseg_mode: psm,
   });
 
-  const result = await worker.recognize(imageData);
+  // tesseract.js mặc định KHÔNG trả về `blocks` (toạ độ + độ tin cậy từng từ)
+  // trừ khi yêu cầu rõ ở tham số output thứ 3 - thiếu nó thì không lọc nhiễu được.
+  const result = await worker.recognize(imageData, {}, { blocks: true });
   await worker.terminate();
 
-  // Parse word boxes từ cấu trúc lồng nhau blocks -> paragraphs -> lines -> words
+  // Duyệt cấu trúc lồng nhau blocks -> paragraphs -> lines -> words, đồng thời
+  // dựng lại văn bản "sạch" bằng cách bỏ các từ có độ tin cậy quá thấp (nhiễu).
   const wordBoxes: OCRResult['wordBoxes'] = [];
+  const cleanLines: string[] = [];
+
   for (const block of result.data.blocks || []) {
     for (const paragraph of block.paragraphs || []) {
       for (const line of paragraph.lines || []) {
-        for (const word of line.words || []) {
+        const lineWords = (line.words || []).filter((w) => (w.text || '').trim().length > 0);
+
+        for (const word of lineWords) {
           wordBoxes.push({
             text: word.text || '',
             confidence: word.confidence || 0,
@@ -53,19 +66,42 @@ export async function performOCR(
             },
           });
         }
+
+        const keptWords = lineWords.filter((w) => (w.confidence || 0) >= minWordConfidence);
+        if (keptWords.length > 0) {
+          cleanLines.push(joinWords(keptWords));
+        }
       }
     }
   }
 
+  // Nếu lọc quá tay khiến mất hết chữ, dùng lại text gốc của Tesseract để tránh
+  // báo nhầm "không tìm thấy văn bản" cho ảnh chỉ đơn giản là chất lượng thấp.
+  const cleanedText = cleanLines.length > 0 ? cleanLines.join('\n') : (result.data.text || '').trim();
+
   // Detect script
-  const detectedScript = detectChineseScript(result.data.text || '');
+  const detectedScript = detectChineseScript(cleanedText);
 
   return {
-    text: result.data.text || '',
+    text: cleanedText,
     confidence: result.data.confidence || 0,
     detectedScript,
     wordBoxes,
   };
+}
+
+// Ghép các từ trong 1 dòng lại: thêm khoảng trắng quanh từ có chữ La-tinh/số
+// (tiếng Anh cần dấu cách), còn chữ Hán thì ghép liền như quy ước gốc.
+function joinWords(words: Array<{ text: string }>): string {
+  let out = '';
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i].text;
+    if (i > 0 && (/[A-Za-z0-9]/.test(words[i - 1].text) || /[A-Za-z0-9]/.test(w))) {
+      out += ' ';
+    }
+    out += w;
+  }
+  return out;
 }
 
 // Detect Chinese script
