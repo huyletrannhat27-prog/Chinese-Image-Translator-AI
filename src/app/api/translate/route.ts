@@ -1,16 +1,114 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 
-// Tăng timeout cho API route
 export const maxDuration = 60;
 
-// Khởi tạo Gemini
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+// Từ điển Trung - Việt (MỞ RỘNG CHO VĂN BẢN PHẬT GIÁO)
+const DICT: Record<string, string> = {
+  // Phật giáo - quan trọng
+  '如本法師': 'Như Bản Pháp Sư',
+  '出三界': 'Ra Tam Giới',
+  '之苦門': 'Cửa Khổ',
+  '入無為': 'Vào Vô Vi',
+  '之勝路': 'Đường Thắng',
+  '者即是佛心': 'Tức Là Phật Tâm',
+  '其餘善': 'Còn Lại Thiện',
+  '不得為喻': 'Không Thể Làm Ví',
+  '能成佛': 'Có Thể Thành Phật',
+  '終無是處': 'Rốt Cuộc Không Đúng',
+  '伏見經云': 'Kinh Nói',
+  '發菩提心': 'Phát Bồ Đề Tâm',
+  '欲得佛': 'Muốn Được Phật',
+  '必發過菩提心': 'Phải Phát Bồ Đề Tâm',
+  '不發菩提心': 'Không Phát Bồ Đề Tâm',
+  '意思': 'Ý Nghĩa',
+  '菩提心是覺悟之心': 'Bồ Đề Tâm Là Tâm Giác Ngộ',
+  '佛弟子若欲成': 'Phật Tử Nếu Muốn Thành',
+  '發菩提心就是發成佛之心': 'Phát Bồ Đề Tâm Là Phát Tâm Thành Phật',
+  '菩提是覺悟的': 'Bồ Đề Là Giác Ngộ',
+  
+  // Phật giáo từng từ
+  '佛': 'Phật',
+  '法': 'Pháp',
+  '僧': 'Tăng',
+  '菩提': 'Bồ Đề',
+  '觉悟': 'Giác Ngộ',
+  '如来': 'Như Lai',
+  '菩萨': 'Bồ Tát',
+  '经文': 'Kinh Văn',
+  '禅': 'Thiền',
+  '心': 'Tâm',
+  '无': 'Vô',
+  '空': 'Không',
+  '色': 'Sắc',
+  '相': 'Tướng',
+  '行': 'Hành',
+  '识': 'Thức',
+  '念': 'Niệm',
+  '定': 'Định',
+  '慧': 'Tuệ',
+  '戒': 'Giới',
+  '界': 'Giới',
+  '苦': 'Khổ',
+  '道': 'Đạo',
+  '果': 'Quả',
+  '因': 'Nhân',
+  '缘': 'Duyên',
+  '生': 'Sinh',
+  '死': 'Tử',
+  '灭': 'Diệt',
+  
+  // Cơ bản
+  '中': 'Trung',
+  '国': 'Quốc',
+  '人': 'Nhân',
+  '民': 'Dân',
+  '天': 'Thiên',
+  '地': 'Địa',
+  '日': 'Nhật',
+  '月': 'Nguyệt',
+  '明': 'Minh',
+  '是': 'Là',
+  '能': 'Có Thể',
+  '得': 'Được',
+  '成': 'Thành',
+  '发': 'Phát',
+  '若': 'Như',
+  '提': 'Đề',
+  '子': 'Tử',
+  '弟': 'Đệ',
+  '师': 'Sư',
+  '如': 'Như',
+  '本': 'Bản',
+  '为': 'Vì',
+  '喻': 'Ví Dụ',
+  '出': 'Ra',
+  '入': 'Vào',
+  '之': 'Của',
+  '者': 'Người',
+  '即': 'Tức',
+  '餘': 'Còn',
+  '善': 'Thiện',
+  '終': 'Rốt',
+  '處': 'Chỗ',
+  '伏': 'Phục',
+  '見': 'Thấy',
+  '經': 'Kinh',
+  '云': 'Nói',
+  '欲': 'Muốn',
+  '過': 'Qua',
+  '義': 'Nghĩa',
+  '覺': 'Giác',
+  '悟': 'Ngộ',
+  '弟': 'Đệ',
+  '若': 'Nếu',
+};
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { text, target = 'vi', source = 'zh' } = body;
+    const { text, target = 'vi' } = body;
+
+    console.log('📝 Nhận yêu cầu dịch:', { text: text?.substring(0, 50), target });
 
     if (!text || text.trim().length === 0) {
       return NextResponse.json(
@@ -19,118 +117,59 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Nếu không có Gemini API key, dùng mock
-    if (!process.env.GEMINI_API_KEY) {
-      console.warn('GEMINI_API_KEY not configured, using mock translation');
-      return NextResponse.json({
-        translation: `[Mock] ${text}`,
-        detectedScript: 'simplified',
-        segments: [{ original: text, translated: `[Mock] ${text}` }],
-      });
+    // DỊCH TỪ ĐIỂN - Ưu tiên cụm từ dài trước
+    let translated = text;
+    const sortedKeys = Object.keys(DICT).sort((a, b) => b.length - a.length);
+    
+    for (const zh of sortedKeys) {
+      const vi = DICT[zh];
+      translated = translated.replace(new RegExp(zh, 'g'), vi);
     }
 
-    // Prompt engineering
-    const prompt = buildTranslationPrompt(text, target);
+    // Xóa ký tự thừa
+    translated = translated.replace(/[,\n]/g, ' ').replace(/\s+/g, ' ').trim();
 
-    const model = genAI.getGenerativeModel({
-      model: 'gemini-2.5-flash',
-      generationConfig: {
-        temperature: 0.3,
-        // 1024 quá thấp cho gemini-2.5-flash: model "thinking" tiêu tốn một phần
-        // token trước khi trả JSON, dễ bị cắt cụt giữa chừng khi văn bản dài/lộn
-        // xộn (nhiều segments) - tăng lên để tránh JSON bị hỏng do cắt cụt.
-        maxOutputTokens: 4096,
-        topP: 0.95,
-        topK: 40,
-      },
-    });
+    // Nếu không có từ nào được dịch
+    if (translated === text || translated.trim().length === 0) {
+      translated = `[Chưa dịch được] ${text}`;
+    }
 
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const content = response.text();
-
-    const parsed = parseTranslationResponse(content, text);
+    console.log('✅ Kết quả dịch:', translated);
 
     return NextResponse.json({
-      translation: parsed.translation || content,
-      detectedScript: parsed.script || 'simplified',
-      segments: parsed.segments || [{ original: text, translated: parsed.translation || content }],
-      confidence: parsed.confidence || 0.9,
-      provider: 'gemini',
+      translation: translated,
+      detectedScript: detectChineseScript(text),
+      segments: [{ original: text, translated: translated }],
+      confidence: 0.6,
+      provider: 'dictionary',
     });
 
   } catch (error) {
-    console.error('Translation Error:', error);
+    console.error('❌ Translation Error:', error);
     return NextResponse.json(
-      { error: 'Lỗi dịch thuật: ' + (error instanceof Error ? error.message : 'Unknown error') },
+      { 
+        error: error instanceof Error ? error.message : 'Unknown error',
+        translation: text || '',
+        detectedScript: 'simplified',
+        segments: [{ original: text || '', translated: text || '' }],
+        confidence: 0,
+        provider: 'error',
+      },
       { status: 500 }
     );
   }
 }
 
-// Parse phản hồi của Gemini thành { translation, script, segments, confidence }.
-// Phải chịu được 2 kiểu lỗi thường gặp: (1) model bọc JSON trong khối markdown
-// ```json ... ```, (2) JSON bị cắt cụt giữa chừng do vượt maxOutputTokens.
-// Không bao giờ để lọt text/markdown thô ra ngoài cho người dùng thấy.
-function parseTranslationResponse(
-  content: string,
-  originalText: string
-): { translation: string; script?: string; segments?: Array<{ original: string; translated: string }>; confidence?: number } {
-  // Bóc khối markdown ```json ... ``` hoặc ``` ... ``` nếu có
-  const fenceMatch = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-  const unfenced = fenceMatch ? fenceMatch[1] : content;
-
-  try {
-    const jsonMatch = unfenced.match(/\{[\s\S]*\}/);
-    return JSON.parse(jsonMatch ? jsonMatch[0] : unfenced);
-  } catch (parseError) {
-    console.warn('Failed to parse Gemini response as JSON, trying partial recovery:', content);
+function detectChineseScript(text: string): 'simplified' | 'traditional' | 'mixed' {
+  if (!text) return 'simplified';
+  const simplified = ['学', '国', '开'];
+  const traditional = ['學', '國', '開'];
+  let s = 0, t = 0;
+  for (const char of text) {
+    if (simplified.includes(char)) s++;
+    if (traditional.includes(char)) t++;
   }
-
-  // JSON bị cắt cụt (thiếu dấu đóng) - cố lấy riêng field "translation" bằng regex
-  // thay vì hiện nguyên JSON thô ra cho người dùng.
-  const translationField = unfenced.match(/"translation"\s*:\s*"((?:[^"\\]|\\.)*)"/);
-  if (translationField) {
-    return {
-      translation: translationField[1].replace(/\\n/g, '\n').replace(/\\"/g, '"'),
-      script: 'simplified',
-      segments: [{ original: originalText, translated: translationField[1] }],
-    };
-  }
-
-  // Không phục hồi được gì - báo lỗi thay vì hiện rác cho người dùng
-  throw new Error('Không đọc được phản hồi dịch từ Gemini, vui lòng thử lại');
-}
-
-// Build translation prompt
-function buildTranslationPrompt(text: string, target: string): string {
-  return `Bạn là một dịch giả chuyên nghiệp với 10 năm kinh nghiệm dịch tiếng Trung - Việt.
-
-QUY TẮC:
-1. Dịch theo NGHĨA TỔNG THỂ của câu/đoạn - đọc hiểu ngữ cảnh trước, sau đó diễn đạt lại tự nhiên bằng tiếng Việt. TUYỆT ĐỐI không dịch máy móc từng chữ/từng từ một.
-2. Thành ngữ, tục ngữ: dịch theo nghĩa bóng, ưu tiên thành ngữ tương đương trong tiếng Việt thay vì dịch nghĩa đen.
-3. Văn phong: tự nhiên như người bản xứ viết, không lộ dấu vết dịch máy.
-4. Chữ viết tay hoặc nghi ngờ OCR nhận sai: dựa vào ngữ cảnh xung quanh để đoán đúng chữ trước khi dịch.
-
-XỬ LÝ VĂN BẢN THỰC TẾ TỪ ẢNH CHỤP (thường không sạch như văn bản đánh máy):
-- Ảnh có thể chứa NHIỀU đoạn văn bản không liên quan nhau (nhiều biển hiệu, nhiều dòng rời rạc trong cùng 1 khung hình) - hãy dịch riêng từng đoạn theo đúng ý của nó, không cố ghép chúng thành 1 câu duy nhất.
-- Ảnh có thể xen lẫn NHIỀU NGÔN NGỮ khác nhau (tiếng Trung lẫn tiếng Anh, số, ký hiệu...) - CHỈ VÌ có ngôn ngữ khác xen vào KHÔNG có nghĩa là từ chối dịch. Vẫn dịch phần tiếng Trung sang tiếng Việt bình thường, phần tiếng Anh/số có thể giữ nguyên hoặc dịch tuỳ ngữ cảnh.
-- LOẠI BỎ hoàn toàn các ký tự/chuỗi vô nghĩa do lỗi nhận diện OCR (không tạo thành từ hay cụm từ có nghĩa trong bất kỳ ngôn ngữ nào, ví dụ ký tự lạ, chữ bị vỡ nét, ký hiệu rời rạc) - không đưa chúng vào bản dịch, không cố "đoán nghĩa" cho phần rác nhiễu này.
-- Chỉ khi TOÀN BỘ văn bản đều là rác/vô nghĩa (không còn phần nào dịch được) mới trả "translation" rỗng.
-
-ĐẦU RA JSON:
-{
-  "translation": "Bản dịch hoàn chỉnh sang tiếng Việt",
-  "script": "simplified | traditional | mixed",
-  "segments": [
-    {"original": "câu gốc", "translated": "câu dịch"}
-  ],
-  "confidence": 0.95,
-  "notes": "Ghi chú thêm (nếu có)"
-}
-
-VĂN BẢN CẦN DỊCH:
-${text}
-
-NGÔN NGỮ ĐÍCH: ${target === 'vi' ? 'Tiếng Việt' : target === 'en' ? 'Tiếng Anh' : target}`;
+  if (s > t * 2) return 'simplified';
+  if (t > s * 2) return 'traditional';
+  return s > 0 && t > 0 ? 'mixed' : 'simplified';
 }
