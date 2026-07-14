@@ -20,6 +20,31 @@ export default function Home() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [cameraActive, setCameraActive] = useState(false);
   const [stream, setStream] = useState<MediaStream | null>(null);
+  const previewImgRef = useRef<HTMLImageElement>(null);
+  const [overlaySize, setOverlaySize] = useState<{ width: number; height: number } | null>(null);
+
+  // Đo kích thước thực tế của ảnh preview đang render (để quy đổi bbox pixel
+  // của ảnh gốc sang vị trí % chính xác cho overlay bản dịch).
+  const updateOverlaySize = () => {
+    if (previewImgRef.current) {
+      setOverlaySize({
+        width: previewImgRef.current.clientWidth,
+        height: previewImgRef.current.clientHeight,
+      });
+    }
+  };
+
+  useEffect(() => {
+    window.addEventListener('resize', updateOverlaySize);
+    return () => window.removeEventListener('resize', updateOverlaySize);
+  }, []);
+
+  // Ảnh base64 có thể load gần như tức thì (đã ở cache) khiến sự kiện
+  // `onLoad` của <img> bắn ra trước khi ref kịp gắn - đo lại 1 lần nữa mỗi
+  // khi có kết quả mới để chắc chắn overlay luôn có kích thước đúng.
+  useEffect(() => {
+    if (result) updateOverlaySize();
+  }, [result]);
 
   // Load history on mount
   useEffect(() => {
@@ -140,6 +165,7 @@ export default function Home() {
         body: JSON.stringify({
           text: ocrData.text,
           target: 'vi',
+          lines: ocrData.regions?.map((r: { text: string }) => r.text),
         }),
       });
 
@@ -161,6 +187,10 @@ export default function Home() {
         segments: translateData.segments || [{ original: ocrData.text, translated: translateData.translation }],
         processingTime: Date.now() - startedAt,
         createdAt: new Date(),
+        regions: ocrData.regions,
+        translatedRegions: translateData.translatedLines,
+        imageWidth: ocrData.imageWidth,
+        imageHeight: ocrData.imageHeight,
       };
 
       setResult(resultData);
@@ -353,11 +383,73 @@ export default function Home() {
       {/* Result */}
       {result && !isProcessing && (
         <div className="mt-4 space-y-4 animate-fadeIn">
-          {/* Preview */}
+          {/* Preview + overlay bản dịch đè lên đúng vị trí chữ gốc */}
           {image && (
-            <div className="relative rounded-xl overflow-hidden bg-gray-100 dark:bg-slate-700">
-              {/* eslint-disable-next-line @next/next/no-img-element -- local base64 preview, not a remote asset to optimize */}
-              <img src={image} alt="Uploaded" className="w-full max-h-64 object-contain" />
+            <div className="flex justify-center rounded-xl overflow-hidden bg-gray-100 dark:bg-slate-700">
+              <div className="relative inline-block max-w-full">
+                {/* eslint-disable-next-line @next/next/no-img-element -- local base64 preview, not a remote asset to optimize */}
+                <img
+                  ref={previewImgRef}
+                  src={image}
+                  alt="Uploaded"
+                  onLoad={updateOverlaySize}
+                  className="max-h-[60vh] w-auto max-w-full"
+                />
+                {overlaySize && result.regions && result.translatedRegions &&
+                  result.imageWidth && result.imageHeight &&
+                  result.regions.length === result.translatedRegions.length &&
+                  result.regions.map((region, idx) => {
+                    const translated = result.translatedRegions![idx];
+                    if (!translated || !translated.trim()) return null;
+
+                    const scaleX = overlaySize.width / result.imageWidth!;
+                    const scaleY = overlaySize.height / result.imageHeight!;
+                    const left = region.bbox.x0 * scaleX;
+                    const top = region.bbox.y0 * scaleY;
+                    const width = (region.bbox.x1 - region.bbox.x0) * scaleX;
+                    const height = (region.bbox.y1 - region.bbox.y0) * scaleY;
+
+                    // Cỡ chữ ước lượng theo DIỆN TÍCH ô so với độ dài bản dịch
+                    // (tiếng Việt luôn dài hơn tiếng Trung gốc khá nhiều) thay vì
+                    // theo chiều cao ô cố định - ô càng rộng/cao và câu càng ngắn
+                    // thì chữ càng to, tránh chữ quá to tràn ra hoặc quá nhỏ khó đọc.
+                    const lineHeightFactor = 1.15;
+                    const rawFontSize = Math.sqrt((width * height) / (0.65 * Math.max(translated.length, 1)));
+                    const fontSize = Math.max(8, Math.min(28, rawFontSize));
+                    const maxLines = Math.max(1, Math.floor(height / (fontSize * lineHeightFactor)));
+
+                    return (
+                      <div
+                        key={idx}
+                        title={region.text}
+                        className="absolute flex items-center justify-center text-center bg-white dark:bg-slate-900 text-gray-900 dark:text-white shadow ring-1 ring-black/10 overflow-hidden px-0.5"
+                        style={{
+                          left: `${left}px`,
+                          top: `${top}px`,
+                          width: `${width}px`,
+                          height: `${height}px`,
+                          fontSize: `${fontSize}px`,
+                          lineHeight: lineHeightFactor,
+                          // Đoạn sau (idx lớn hơn = nằm dưới trên ảnh) đè lên phần
+                          // tràn của đoạn trước nếu 2 đoạn ở gần nhau - tránh chữ
+                          // tràn ra bị 2 ô đè lẫn lộn, khó đọc.
+                          zIndex: idx,
+                        }}
+                      >
+                        <span
+                          style={{
+                            display: '-webkit-box',
+                            WebkitLineClamp: maxLines,
+                            WebkitBoxOrient: 'vertical',
+                            overflow: 'hidden',
+                          }}
+                        >
+                          {translated}
+                        </span>
+                      </div>
+                    );
+                  })}
+              </div>
             </div>
           )}
 

@@ -59,6 +59,37 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // SPARSE_TEXT (được thử trước, hợp với biển hiệu/vật thể) không phân tích
+    // bố cục trang nên KHÔNG gộp được các dòng liền kề thành đoạn văn - mỗi
+    // dòng thành 1 "đoạn" riêng (lineCount toàn 1). Ảnh dạng đoạn văn dài (tin
+    // nhắn, bài báo, bao bì nhiều chữ...) cần AUTO để nhóm đúng, nếu không các
+    // ô overlay bản dịch sẽ quá mảnh và chồng lấn lên nhau. Phát hiện trường
+    // hợp này rồi thử lại bằng AUTO trên cùng ảnh, chỉ dùng nếu AUTO thực sự
+    // gộp được nhiều hơn và không làm mất nhiều nội dung đã nhận diện được.
+    const totalLines = result.regions.reduce((sum, r) => sum + r.lineCount, 0);
+    const looksUngrouped = result.regions.length >= 3 && totalLines / result.regions.length < 1.3;
+
+    if (looksUngrouped) {
+      const winningBuffer = attempts.find((a) => a.psm === PSM.SPARSE_TEXT)?.buffer || buffer;
+      try {
+        const autoResult = await performOCR(winningBuffer, {
+          language: 'chi_sim+chi_tra+eng',
+          psm: PSM.AUTO,
+        });
+        const autoTotalLines = autoResult.regions.reduce((sum, r) => sum + r.lineCount, 0);
+        const autoGroupedBetter =
+          autoResult.regions.length > 0 &&
+          autoTotalLines / autoResult.regions.length > totalLines / result.regions.length &&
+          autoResult.text.trim().length >= result.text.trim().length * 0.7;
+
+        if (autoGroupedBetter) {
+          result = autoResult;
+        }
+      } catch (e) {
+        console.warn('AUTO re-grouping attempt failed:', e);
+      }
+    }
+
     if (!result.text || result.text.trim().length === 0) {
       return NextResponse.json({
         text: '',
@@ -68,12 +99,20 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // Kích thước ảnh đã tiền xử lý (cùng tỉ lệ khung hình với ảnh gốc vì
+    // preprocessImage chỉ resize `fit: inside`, không crop) - client dùng để
+    // quy đổi toạ độ bbox pixel sang % vị trí overlay trên ảnh hiển thị.
+    const { width: imageWidth, height: imageHeight } = await sharp(buffer).metadata();
+
     return NextResponse.json({
       text: result.text.trim(),
       confidence: result.confidence / 100,
       detectedScript: result.detectedScript,
       language: 'chi_sim+chi_tra+eng',
       wordBoxes: result.wordBoxes,
+      regions: result.regions,
+      imageWidth: imageWidth || 0,
+      imageHeight: imageHeight || 0,
     });
 
   } catch (error) {

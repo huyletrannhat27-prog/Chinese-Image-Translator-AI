@@ -10,7 +10,12 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { text, target = 'vi', source = 'zh' } = body;
+    const { text, target = 'vi', source = 'zh', lines } = body as {
+      text: string;
+      target?: string;
+      source?: string;
+      lines?: string[];
+    };
 
     if (!text || text.trim().length === 0) {
       return NextResponse.json(
@@ -26,11 +31,12 @@ export async function POST(req: NextRequest) {
         translation: `[Mock] ${text}`,
         detectedScript: 'simplified',
         segments: [{ original: text, translated: `[Mock] ${text}` }],
+        translatedLines: lines && lines.length > 0 ? lines.map((l) => `[Mock] ${l}`) : undefined,
       });
     }
 
     // Prompt engineering
-    const prompt = buildTranslationPrompt(text, target);
+    const prompt = buildTranslationPrompt(text, target, lines);
 
     const model = genAI.getGenerativeModel({
       model: 'gemini-2.5-flash',
@@ -39,7 +45,7 @@ export async function POST(req: NextRequest) {
         // 1024 quá thấp cho gemini-2.5-flash: model "thinking" tiêu tốn một phần
         // token trước khi trả JSON, dễ bị cắt cụt giữa chừng khi văn bản dài/lộn
         // xộn (nhiều segments) - tăng lên để tránh JSON bị hỏng do cắt cụt.
-        maxOutputTokens: 4096,
+        maxOutputTokens: 6144,
         topP: 0.95,
         topK: 40,
       },
@@ -51,12 +57,21 @@ export async function POST(req: NextRequest) {
 
     const parsed = parseTranslationResponse(content, text);
 
+    // Chỉ tin translatedLines nếu đúng số dòng đầu vào - model đôi khi gộp/tách
+    // dòng dù được dặn không làm vậy; sai số dòng thì bỏ, để client tự fallback
+    // về hiển thị không overlay thay vì overlay lệch vị trí.
+    const translatedLines =
+      lines && parsed.translatedLines && parsed.translatedLines.length === lines.length
+        ? parsed.translatedLines
+        : undefined;
+
     return NextResponse.json({
       translation: parsed.translation || content,
       detectedScript: parsed.script || 'simplified',
       segments: parsed.segments || [{ original: text, translated: parsed.translation || content }],
       confidence: parsed.confidence || 0.9,
       provider: 'gemini',
+      translatedLines,
     });
 
   } catch (error) {
@@ -75,7 +90,13 @@ export async function POST(req: NextRequest) {
 function parseTranslationResponse(
   content: string,
   originalText: string
-): { translation: string; script?: string; segments?: Array<{ original: string; translated: string }>; confidence?: number } {
+): {
+  translation: string;
+  script?: string;
+  segments?: Array<{ original: string; translated: string }>;
+  confidence?: number;
+  translatedLines?: string[];
+} {
   // Bóc khối markdown ```json ... ``` hoặc ``` ... ``` nếu có
   const fenceMatch = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
   const unfenced = fenceMatch ? fenceMatch[1] : content;
@@ -103,7 +124,18 @@ function parseTranslationResponse(
 }
 
 // Build translation prompt
-function buildTranslationPrompt(text: string, target: string): string {
+function buildTranslationPrompt(text: string, target: string, lines?: string[]): string {
+  const lineInstruction =
+    lines && lines.length > 0
+      ? `
+
+DỊCH THEO TỪNG DÒNG (để hiển thị đè lên đúng vị trí trên ảnh):
+Văn bản trên được OCR thành ${lines.length} dòng, đánh số dưới đây theo đúng thứ tự xuất hiện trên ảnh:
+${lines.map((l, i) => `${i + 1}. ${l}`).join('\n')}
+
+Dịch TỪNG DÒNG một sang tiếng Việt, giữ NGUYÊN số lượng và thứ tự dòng - TUYỆT ĐỐI không gộp nhiều dòng thành 1, không tách 1 dòng thành nhiều dòng. Nếu 1 dòng chỉ toàn rác/vô nghĩa do lỗi OCR thì dịch dòng đó thành chuỗi rỗng "". Thêm field "translatedLines" vào JSON đầu ra: mảng đúng ${lines.length} chuỗi theo thứ tự trên.`
+      : '';
+
   return `Bạn là một dịch giả chuyên nghiệp với 10 năm kinh nghiệm dịch tiếng Trung - Việt.
 
 QUY TẮC:
@@ -126,11 +158,12 @@ XỬ LÝ VĂN BẢN THỰC TẾ TỪ ẢNH CHỤP (thường không sạch như 
     {"original": "câu gốc", "translated": "câu dịch"}
   ],
   "confidence": 0.95,
-  "notes": "Ghi chú thêm (nếu có)"
+  "notes": "Ghi chú thêm (nếu có)"${lines && lines.length > 0 ? ',\n  "translatedLines": ["dòng 1 đã dịch", "dòng 2 đã dịch", "... (đúng ' + lines.length + ' phần tử)"]' : ''}
 }
 
 VĂN BẢN CẦN DỊCH:
 ${text}
+${lineInstruction}
 
 NGÔN NGỮ ĐÍCH: ${target === 'vi' ? 'Tiếng Việt' : target === 'en' ? 'Tiếng Anh' : target}`;
 }

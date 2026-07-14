@@ -9,6 +9,20 @@ export interface OCRResult {
     confidence: number;
     bbox: { x0: number; y0: number; x1: number; y1: number };
   }>;
+  // Toạ độ theo từng ĐOẠN VĂN (paragraph, gộp các dòng liền kề của cùng 1 ý),
+  // không phải từng dòng lẻ - dùng để overlay bản dịch đè lên đúng vùng chữ
+  // gốc trên ảnh. Gộp theo đoạn thay vì dòng vì bản dịch tiếng Việt thường dài
+  // hơn nhiều so với tiếng Trung gốc; nếu bám sát bbox từng dòng lẻ (vốn rất
+  // mảnh) thì các ô dịch chồng lấn lên nhau. Gộp theo đoạn cũng giúp dịch trọn
+  // nghĩa câu thay vì cắt vụn theo từng dòng OCR.
+  regions: Array<{
+    text: string;
+    confidence: number;
+    bbox: { x0: number; y0: number; x1: number; y1: number };
+    // Số dòng OCR gốc đã gộp vào đoạn này - dùng để nhận biết việc gộp đoạn
+    // có thất bại hay không (vd toàn 1) và để ước lượng cỡ chữ overlay.
+    lineCount: number;
+  }>;
 }
 
 export async function performOCR(
@@ -47,10 +61,20 @@ export async function performOCR(
   // Duyệt cấu trúc lồng nhau blocks -> paragraphs -> lines -> words, đồng thời
   // dựng lại văn bản "sạch" bằng cách bỏ các từ có độ tin cậy quá thấp (nhiễu).
   const wordBoxes: OCRResult['wordBoxes'] = [];
+  const regions: OCRResult['regions'] = [];
   const cleanLines: string[] = [];
 
   for (const block of result.data.blocks || []) {
     for (const paragraph of block.paragraphs || []) {
+      // Từ giữ lại (đủ tin cậy) của CẢ đoạn văn, gộp từ mọi dòng bên trong -
+      // dùng để tính bbox bao trọn đoạn thay vì bbox mảnh của từng dòng lẻ.
+      const paragraphKeptWords: Array<{
+        text: string;
+        confidence: number;
+        bbox: { x0: number; y0: number; x1: number; y1: number };
+      }> = [];
+      const paragraphLineTexts: string[] = [];
+
       for (const line of paragraph.lines || []) {
         const lineWords = (line.words || []).filter((w) => (w.text || '').trim().length > 0);
 
@@ -67,10 +91,29 @@ export async function performOCR(
           });
         }
 
-        const keptWords = lineWords.filter((w) => (w.confidence || 0) >= minWordConfidence);
+        const keptWords = lineWords.filter((w) => (w.confidence || 0) >= minWordConfidence && w.bbox);
         if (keptWords.length > 0) {
           cleanLines.push(joinWords(keptWords));
+          paragraphLineTexts.push(joinWords(keptWords));
+          for (const w of keptWords) {
+            paragraphKeptWords.push({ text: w.text || '', confidence: w.confidence || 0, bbox: w.bbox! });
+          }
         }
+      }
+
+      if (paragraphKeptWords.length > 0) {
+        regions.push({
+          text: paragraphLineTexts.join(' '),
+          confidence:
+            paragraphKeptWords.reduce((sum, w) => sum + w.confidence, 0) / paragraphKeptWords.length,
+          lineCount: paragraphLineTexts.length,
+          bbox: {
+            x0: Math.min(...paragraphKeptWords.map((w) => w.bbox.x0)),
+            y0: Math.min(...paragraphKeptWords.map((w) => w.bbox.y0)),
+            x1: Math.max(...paragraphKeptWords.map((w) => w.bbox.x1)),
+            y1: Math.max(...paragraphKeptWords.map((w) => w.bbox.y1)),
+          },
+        });
       }
     }
   }
@@ -87,6 +130,7 @@ export async function performOCR(
     confidence: result.data.confidence || 0,
     detectedScript,
     wordBoxes,
+    regions,
   };
 }
 
