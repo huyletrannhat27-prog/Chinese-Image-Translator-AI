@@ -1,3 +1,12 @@
+// Toạ độ 1 đoạn văn (paragraph, gộp nhiều dòng liền kề) trên ảnh, theo pixel
+// của ảnh đã tiền xử lý ở OCR - dùng để overlay bản dịch.
+export interface OCRRegion {
+  text: string;
+  confidence: number;
+  bbox: { x0: number; y0: number; x1: number; y1: number };
+  lineCount: number;
+}
+
 // Translation result type
 export interface TranslationResult {
   id: string;
@@ -11,6 +20,12 @@ export interface TranslationResult {
   }>;
   processingTime: number;
   createdAt: Date;
+  // Dữ liệu overlay: bản dịch từng đoạn khớp vị trí (bbox) chữ gốc trên ảnh.
+  // Optional vì item cũ trong history hoặc bản dịch mock có thể không có.
+  regions?: OCRRegion[];
+  translatedRegions?: string[];
+  imageWidth?: number;
+  imageHeight?: number;
 }
 
 // OCR result type
@@ -24,6 +39,9 @@ export interface OCRResult {
     confidence: number;
     bbox: { x0: number; y0: number; x1: number; y1: number };
   }>;
+  regions?: OCRRegion[];
+  imageWidth?: number;
+  imageHeight?: number;
 }
 
 // Translation request type
