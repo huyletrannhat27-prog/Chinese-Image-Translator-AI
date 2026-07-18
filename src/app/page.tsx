@@ -78,6 +78,13 @@ export default function Home() {
 
   // Start camera
   const startCamera = async () => {
+    // Some Android WebViews do not expose getUserMedia even though the device
+    // has a camera. Fall back to the native file chooser, which can open the
+    // camera through the `capture` hint on the input below.
+    if (!navigator.mediaDevices?.getUserMedia) {
+      fileInputRef.current?.click();
+      return;
+    }
     try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
@@ -420,6 +427,7 @@ export default function Home() {
               ref={fileInputRef}
               type="file"
               accept="image/*"
+              capture="environment"
               className="hidden"
               onChange={handleFileUpload}
             />
