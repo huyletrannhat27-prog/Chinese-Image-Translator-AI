@@ -5,6 +5,7 @@ export interface OCRRegion {
   confidence: number;
   bbox: { x0: number; y0: number; x1: number; y1: number };
   lineCount: number;
+  orientation?: 'horizontal' | 'vertical';
 }
 
 // Translation result type

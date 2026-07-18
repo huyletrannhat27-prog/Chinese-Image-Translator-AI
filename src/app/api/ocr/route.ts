@@ -21,6 +21,9 @@ export async function POST(req: NextRequest) {
     // Convert to buffer
     const bytes = await imageFile.arrayBuffer();
     let buffer = Buffer.from(bytes);
+    const sourceMetadata = await sharp(buffer).metadata();
+    const sourceWidth = sourceMetadata.width || 0;
+    const sourceHeight = sourceMetadata.height || 0;
 
     // Preprocess (resize, grayscale, normalize, denoise, sharpen)
     try {
@@ -96,23 +99,45 @@ export async function POST(req: NextRequest) {
         confidence: 0,
         detectedScript: 'simplified',
         language: 'unknown',
+        imageWidth: sourceWidth,
+        imageHeight: sourceHeight,
       });
     }
 
     // Kích thước ảnh đã tiền xử lý (cùng tỉ lệ khung hình với ảnh gốc vì
     // preprocessImage chỉ resize `fit: inside`, không crop) - client dùng để
     // quy đổi toạ độ bbox pixel sang % vị trí overlay trên ảnh hiển thị.
-    const { width: imageWidth, height: imageHeight } = await sharp(buffer).metadata();
+    const { width: processedWidth, height: processedHeight } = await sharp(buffer).metadata();
+    const scaleX = sourceWidth && processedWidth ? sourceWidth / processedWidth : 1;
+    const scaleY = sourceHeight && processedHeight ? sourceHeight / processedHeight : 1;
+    const scaledRegions = result.regions.map((region) => ({
+      ...region,
+      bbox: {
+        x0: region.bbox.x0 * scaleX,
+        y0: region.bbox.y0 * scaleY,
+        x1: region.bbox.x1 * scaleX,
+        y1: region.bbox.y1 * scaleY,
+      },
+    }));
+    const scaledWordBoxes = result.wordBoxes.map((word) => ({
+      ...word,
+      bbox: {
+        x0: word.bbox.x0 * scaleX,
+        y0: word.bbox.y0 * scaleY,
+        x1: word.bbox.x1 * scaleX,
+        y1: word.bbox.y1 * scaleY,
+      },
+    }));
 
     return NextResponse.json({
       text: result.text.trim(),
       confidence: result.confidence / 100,
       detectedScript: result.detectedScript,
       language: 'chi_sim+chi_tra+eng',
-      wordBoxes: result.wordBoxes,
-      regions: result.regions,
-      imageWidth: imageWidth || 0,
-      imageHeight: imageHeight || 0,
+      wordBoxes: scaledWordBoxes,
+      regions: scaledRegions,
+      imageWidth: sourceWidth,
+      imageHeight: sourceHeight,
     });
 
   } catch (error) {

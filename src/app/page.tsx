@@ -153,20 +153,20 @@ export default function Home() {
       const ocrData = await ocrResponse.json();
       setProgress(60);
 
-      if (!ocrData.text || ocrData.text.trim().length === 0) {
-        throw new Error('Không tìm thấy văn bản tiếng Trung trong ảnh');
-      }
-
       // Step 2: Translation
       setProgress(70);
+      const translationFormData = new FormData();
+      translationFormData.append('image', file);
+      translationFormData.append('text', ocrData.text || '');
+      translationFormData.append('target', 'vi');
+      translationFormData.append(
+        'lines',
+        JSON.stringify(ocrData.regions?.map((r: { text: string }) => r.text) || [])
+      );
+
       const translateResponse = await fetch('/api/translate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: ocrData.text,
-          target: 'vi',
-          lines: ocrData.regions?.map((r: { text: string }) => r.text),
-        }),
+        body: translationFormData,
       });
 
       if (!translateResponse.ok) {
@@ -177,18 +177,45 @@ export default function Home() {
       const translateData = await translateResponse.json();
       setProgress(90);
 
+      // Ưu tiên các khối ngữ nghĩa do Gemini Vision định vị. Bbox Vision dùng
+      // thang 0..1000 nên đổi sang pixel ảnh OCR để renderer overlay dùng chung.
+      const visionRegions = Array.isArray(translateData.overlayRegions)
+        ? translateData.overlayRegions.map((region: {
+            original: string;
+            translated: string;
+            orientation?: 'horizontal' | 'vertical';
+            bbox: { x0: number; y0: number; x1: number; y1: number };
+          }) => ({
+            text: region.original,
+            confidence: translateData.confidence || 0.9,
+            orientation: region.orientation || 'horizontal',
+            lineCount: Math.max(1, region.original.split(/\r?\n/).length),
+            bbox: {
+              x0: region.bbox.x0 * (ocrData.imageWidth || 0) / 1000,
+              y0: region.bbox.y0 * (ocrData.imageHeight || 0) / 1000,
+              x1: region.bbox.x1 * (ocrData.imageWidth || 0) / 1000,
+              y1: region.bbox.y1 * (ocrData.imageHeight || 0) / 1000,
+            },
+          }))
+        : undefined;
+      const visionTranslations = Array.isArray(translateData.overlayRegions)
+        ? translateData.overlayRegions.map((region: { translated: string }) => region.translated)
+        : undefined;
+
       // Build result
       const resultData: TranslationResult = {
         id: `trans_${Date.now()}`,
-        originalText: ocrData.text,
+        originalText: translateData.correctedText || ocrData.text,
         translation: translateData.translation,
         detectedScript: translateData.detectedScript || 'simplified',
-        confidence: ocrData.confidence || 0.85,
+        confidence: translateData.confidence || ocrData.confidence || 0.85,
         segments: translateData.segments || [{ original: ocrData.text, translated: translateData.translation }],
         processingTime: Date.now() - startedAt,
         createdAt: new Date(),
-        regions: ocrData.regions,
-        translatedRegions: translateData.translatedLines,
+        regions: visionRegions?.length ? visionRegions : ocrData.regions,
+        translatedRegions: visionTranslations?.length
+          ? visionTranslations
+          : translateData.translatedLines,
         imageWidth: ocrData.imageWidth,
         imageHeight: ocrData.imageHeight,
       };
@@ -385,7 +412,7 @@ export default function Home() {
         <div className="mt-4 space-y-4 animate-fadeIn">
           {/* Preview + overlay bản dịch đè lên đúng vị trí chữ gốc */}
           {image && (
-            <div className="flex justify-center rounded-xl overflow-hidden bg-gray-100 dark:bg-slate-700">
+            <div className="flex justify-center rounded-xl overflow-visible bg-gray-100 dark:bg-slate-700 py-2">
               <div className="relative inline-block max-w-full">
                 {/* eslint-disable-next-line @next/next/no-img-element -- local base64 preview, not a remote asset to optimize */}
                 <img
@@ -409,20 +436,25 @@ export default function Home() {
                     const width = (region.bbox.x1 - region.bbox.x0) * scaleX;
                     const height = (region.bbox.y1 - region.bbox.y0) * scaleY;
 
-                    // Cỡ chữ ước lượng theo DIỆN TÍCH ô so với độ dài bản dịch
-                    // (tiếng Việt luôn dài hơn tiếng Trung gốc khá nhiều) thay vì
-                    // theo chiều cao ô cố định - ô càng rộng/cao và câu càng ngắn
-                    // thì chữ càng to, tránh chữ quá to tràn ra hoặc quá nhỏ khó đọc.
-                    const lineHeightFactor = 1.15;
-                    const rawFontSize = Math.sqrt((width * height) / (0.65 * Math.max(translated.length, 1)));
-                    const fontSize = Math.max(8, Math.min(28, rawFontSize));
-                    const maxLines = Math.max(1, Math.floor(height / (fontSize * lineHeightFactor)));
+                    const isVertical = region.orientation === 'vertical';
+                    // Dùng đúng bbox chữ gốc, tuyệt đối không nới ô sang vùng kế
+                    // bên. Cỡ chữ co theo diện tích và độ dài bản dịch để vừa ô.
+                    const lineHeightFactor = 1.05;
+                    const usableWidth = Math.max(width - 2, 1);
+                    const usableHeight = Math.max(height - 2, 1);
+                    const areaFontSize = Math.sqrt(
+                      (usableWidth * usableHeight) / Math.max(translated.length * 0.62, 1)
+                    );
+                    const directionLimit = isVertical
+                      ? usableWidth * 0.72
+                      : usableHeight / lineHeightFactor;
+                    const fontSize = Math.max(4, Math.min(13, areaFontSize, directionLimit));
 
                     return (
                       <div
                         key={idx}
                         title={region.text}
-                        className="absolute flex items-center justify-center text-center bg-white dark:bg-slate-900 text-gray-900 dark:text-white shadow ring-1 ring-black/10 overflow-hidden px-0.5"
+                        className="absolute flex items-center justify-center text-center bg-white/90 dark:bg-slate-900/90 text-gray-900 dark:text-white ring-1 ring-blue-500/25 overflow-hidden px-px"
                         style={{
                           left: `${left}px`,
                           top: `${top}px`,
@@ -430,22 +462,12 @@ export default function Home() {
                           height: `${height}px`,
                           fontSize: `${fontSize}px`,
                           lineHeight: lineHeightFactor,
-                          // Đoạn sau (idx lớn hơn = nằm dưới trên ảnh) đè lên phần
-                          // tràn của đoạn trước nếu 2 đoạn ở gần nhau - tránh chữ
-                          // tràn ra bị 2 ô đè lẫn lộn, khó đọc.
-                          zIndex: idx,
+                          writingMode: isVertical ? 'vertical-rl' : 'horizontal-tb',
+                          textOrientation: isVertical ? 'mixed' : undefined,
+                          zIndex: 1,
                         }}
                       >
-                        <span
-                          style={{
-                            display: '-webkit-box',
-                            WebkitLineClamp: maxLines,
-                            WebkitBoxOrient: 'vertical',
-                            overflow: 'hidden',
-                          }}
-                        >
-                          {translated}
-                        </span>
+                        <span className="whitespace-pre-wrap break-words">{translated}</span>
                       </div>
                     );
                   })}
