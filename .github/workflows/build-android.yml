@@ -24,8 +24,6 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
-      - name: Validate app URL
-        run: echo "$CAPACITOR_SERVER_URL" | grep -Eq '^https://' || (echo "Set CAPACITOR_SERVER_URL to a public HTTPS URL first" && exit 1)
       - run: npm ci
       - run: npx cap sync android
       - name: Build debug APK

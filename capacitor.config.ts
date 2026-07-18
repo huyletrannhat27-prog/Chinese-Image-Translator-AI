@@ -1,6 +1,6 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
-const appUrl = process.env.CAPACITOR_SERVER_URL || 'http://10.0.2.2:3000';
+const appUrl = process.env.CAPACITOR_SERVER_URL || 'https://chinese-image-translator-ai.onrender.com';
 
 const config: CapacitorConfig = {
   appId: 'vn.hanzilens.app',
