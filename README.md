@@ -109,6 +109,11 @@ npm run build
 npm run start
 ```
 
+### Cài trên điện thoại / build APK
+
+- Trên Android hoặc iPhone: mở website bằng trình duyệt và chọn **Thêm vào màn hình chính** để cài bản PWA.
+- Để tạo APK Android: deploy website trước, sau đó xem hướng dẫn trong [`MOBILE.md`](MOBILE.md). Workflow GitHub Actions có thể tự build file `app-debug.apk` để tải về và chia sẻ.
+
 ---
 
 ## 📖 Hướng dẫn sử dụng
