@@ -1,6 +1,6 @@
 {
   "name": "chinese-image-translator",
-  "version": "1.0.0",
+  "version": "1.0.3",
   "description": "AI-powered Chinese image translator with OCR and LLM - Chụp ảnh, dịch tiếng Trung sang tiếng Việt ngay lập tức",
   "author": "huyletrannhat27-prog",
   "license": "MIT",
@@ -27,13 +27,11 @@
     "clsx": "^2.0.0",
     "lucide-react": "^0.263.1",
     "next": "14.0.4",
-    "openai": "^4.28.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "sharp": "^0.33.0",
     "tailwind-merge": "^2.0.0",
     "tailwindcss-animate": "^1.0.7",
-    "tesseract.js": "^6.0.1",
     "zustand": "^4.4.7"
   },
   "devDependencies": {
@@ -59,8 +57,10 @@
     "ai",
     "image-translator",
     "nextjs",
-    "tesseract",
-    "gemini"
+    "vision-ocr",
+    "gemini",
+    "openai",
+    "claude"
   ],
   "repository": {
     "type": "git",

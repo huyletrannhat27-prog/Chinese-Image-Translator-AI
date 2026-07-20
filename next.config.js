@@ -2,12 +2,6 @@
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // tesseract.js spawns a worker_thread that requires its own worker-script
-  // file straight from node_modules at runtime; bundling it with webpack
-  // breaks that resolution (MODULE_NOT_FOUND for .next/worker-script/...).
-  experimental: {
-    serverComponentsExternalPackages: ['tesseract.js'],
-  },
   images: {
     formats: ['image/avif', 'image/webp'],
     remotePatterns: [

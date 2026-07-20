@@ -19,13 +19,12 @@
 
 **Mục tiêu:** Trích xuất văn bản tiếng Trung từ ảnh.
 
-- [x] Cài Tesseract.js (server-side, qua API route `/api/ocr`)
-- [x] Hàm OCR dùng chung: `performOCR()` trong `src/lib/ocr/tesseract.ts`
+- [x] Thay Tesseract bằng AI Vision OCR (Gemini / OpenAI / Claude)
+- [x] OCR và dịch trực tiếp từ ảnh trong một request
 - [x] Hiển thị kết quả OCR (văn bản thô)
-- [x] Xử lý trường hợp Tesseract không nhận diện được (báo lỗi rõ ràng)
-- [x] Tiền xử lý ảnh trước OCR (Sharp: resize, grayscale, normalize, denoise, sharpen)
+- [x] Xử lý trường hợp AI không nhận diện được (báo lỗi rõ ràng)
+- [x] Tiền xử lý ảnh trước OCR (Sharp: EXIF rotate, resize, JPEG optimize)
 - [x] Loading state trong quá trình OCR (progress bar)
-- [ ] Server fallback: Google Vision API (chưa làm — có thể thêm ở Phase 4+)
 
 ---
 
@@ -33,13 +32,13 @@
 
 **Mục tiêu:** Nhận diện loại chữ (Giản thể / Phồn thể) và dịch sang tiếng Việt.
 
-- [x] Detect script: Giản thể (简体) vs Phồn thể (繁體) — trong `performOCR()`
+- [x] Detect script: Giản thể (简体) vs Phồn thể (繁體) bằng AI Vision
 - [x] Hiển thị loại chữ đã phát hiện trên UI
 - [x] Integration Google Gemini: `/api/translate` (endpoint chính)
-- [x] Integration OpenAI: `/api/translate/openai` (fallback, cần `OPENAI_API_KEY`)
-- [x] Integration Claude: `/api/translate/claude` (fallback, cần `CLAUDE_API_KEY`)
+- [x] Integration OpenAI Vision: `/api/translate/openai` (cần `OPENAI_API_KEY`)
+- [x] Integration Claude Vision: `/api/translate/claude` (cần `ANTHROPIC_API_KEY`)
 - [x] Hiển thị bản dịch + văn bản gốc + phân đoạn câu
-- [ ] Cho phép user chọn provider ngay trên UI (hiện đang cố định Gemini)
+- [x] Cho phép user chọn provider ngay trên UI
 - [ ] Cho phép user chọn ngôn ngữ đích khác tiếng Việt trên UI
 
 ---
@@ -49,7 +48,7 @@
 **Mục tiêu:** Nâng cao trải nghiệm người dùng và hiệu suất.
 
 - [x] Copy to clipboard: copy gốc, copy dịch
-- [x] Xử lý ảnh trước khi OCR: Sharp resize, tăng độ tương phản
+- [x] Xử lý ảnh trước khi OCR: Sharp rotate, resize và nén tối ưu
 - [x] Responsive cơ bản (mobile-first, Tailwind)
 - [ ] Rate limiting: giới hạn request/phút
 - [ ] Cache kết quả dịch

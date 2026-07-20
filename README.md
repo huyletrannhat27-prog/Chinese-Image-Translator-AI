@@ -2,7 +2,7 @@
 
 [![Next.js](https://img.shields.io/badge/Next.js_14-000000?style=flat&logo=next.js&logoColor=white)](https://nextjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Tesseract](https://img.shields.io/badge/Tesseract.js-3C3C3C?style=flat&logo=tesseract&logoColor=white)](https://github.com/naptha/tesseract.js)
+[![Vision OCR](https://img.shields.io/badge/OCR-AI_Vision-4F46E5?style=flat)](#)
 [![Gemini](https://img.shields.io/badge/Gemini-8E75B2?style=flat&logo=google&logoColor=white)](https://deepmind.google/technologies/gemini/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
@@ -22,7 +22,7 @@
 
 ### ⚡ Điểm nổi bật
 - ✅ **Không cần đăng nhập** - Dùng ngay khi mở trang
-- ✅ **Dịch chính xác** - Sử dụng Gemini 1.5 Flash (có fallback OpenAI / Claude)
+- ✅ **Dịch chính xác** - Chọn Google Gemini, OpenAI hoặc Anthropic Claude ngay trên giao diện
 - ✅ **Bảo mật** - Ảnh xử lý theo request, không lưu trữ vĩnh viễn trên server
 
 ---
@@ -34,10 +34,8 @@
 | **Framework** | Next.js 14 (App Router) | Web app, API routes |
 | **Ngôn ngữ** | TypeScript | Type-safe |
 | **UI** | Tailwind CSS + Radix UI | Giao diện responsive |
-| **OCR** | Tesseract.js v6 (server-side) | Nhận diện chữ Trung |
-| **Tiền xử lý ảnh** | Sharp | Resize, grayscale, tăng độ tương phản |
-| **Dịch thuật** | Google Gemini 1.5 Flash | Dịch AI chính |
-| **Fallback dịch** | OpenAI GPT-4o mini / Claude 3 Haiku | Dịch AI dự phòng |
+| **OCR + dịch** | Gemini Vision / OpenAI Vision / Claude Vision | Đọc trực tiếp ảnh và dịch trong một lần gọi |
+| **Tiền xử lý ảnh** | Sharp | Xoay ảnh theo EXIF, resize và tối ưu payload |
 | **Lịch sử** | localStorage (client) | Không cần database |
 
 ---
@@ -47,13 +45,9 @@
 ```
 📸 Chụp/Upload ảnh
       ↓
-🖼️ Tiền xử lý (Sharp: resize, grayscale, normalize, sharpen)
+🖼️ Tiền xử lý (Sharp: xoay đúng chiều, resize, nén ảnh)
       ↓
-📝 OCR (Tesseract.js, chi_sim + chi_tra)
-      ↓
-🔤 Phát hiện Giản thể / Phồn thể
-      ↓
-🤖 Dịch bằng Gemini (kèm phân đoạn câu)
+🤖 AI Vision đã chọn: OCR + phát hiện hệ chữ + dịch + định vị vùng chữ
       ↓
 📋 Lưu lịch sử (localStorage) + hiển thị kết quả
 ```
@@ -84,12 +78,12 @@ cp .env.example .env
 ```
 
 ```env
-# Bắt buộc để dịch thật (nếu bỏ trống, app vẫn chạy nhưng trả bản dịch [Mock])
+# Cấu hình ít nhất một provider mà bạn muốn dùng
 GEMINI_API_KEY=your_gemini_api_key
-
-# Tuỳ chọn - fallback khi không dùng Gemini
 OPENAI_API_KEY=your_openai_api_key
-CLAUDE_API_KEY=your_claude_api_key
+OPENAI_MODEL=gpt-5.6-terra
+ANTHROPIC_API_KEY=your_anthropic_api_key
+CLAUDE_MODEL=claude-haiku-4-5-20251001
 ```
 
 Lấy Gemini API key miễn phí tại: https://aistudio.google.com/app/apikey
@@ -120,7 +114,7 @@ npm run start
 
 1. **Mở trang** - Không cần đăng nhập, dùng ngay.
 2. **Chụp/Upload ảnh** - Nhấn "Mở Camera" để chụp, hoặc "Chọn ảnh từ máy".
-3. **Đợi xử lý** - App tự động OCR rồi dịch, có progress bar (Đang OCR... → Đang dịch...).
+3. **Chọn AI và đợi xử lý** - Gemini, OpenAI hoặc Claude sẽ đọc ảnh rồi dịch trực tiếp.
 4. **Xem kết quả** - Văn bản gốc, bản dịch tiếng Việt, độ chính xác, loại chữ (giản thể/phồn thể).
 5. **Lưu & xem lịch sử** - Tự động lưu vào lịch sử; nhấn biểu tượng 📋 để mở, hoặc vào `/history`.
 
@@ -131,8 +125,8 @@ npm run start
 Xem chi tiết từng phase tại [`_docs/02_phases.md`](_docs/02_phases.md). Tóm tắt:
 
 - ✅ **Phase 1 — Foundation**: Next.js + Tailwind, upload/camera, API structure cơ bản
-- ✅ **Phase 2 — OCR**: Tesseract.js server-side, tiền xử lý ảnh với Sharp
-- 🔄 **Phase 3 — Dịch thuật nâng cao**: chọn provider (Gemini/OpenAI/Claude) và ngôn ngữ đích trên UI
+- ✅ **Phase 2 — OCR**: AI Vision OCR, tiền xử lý ảnh với Sharp
+- ✅ **Phase 3 — Dịch thuật nâng cao**: chọn provider Gemini/OpenAI/Claude trên UI
 - 🔄 **Phase 4 — Tối ưu**: rate limiting, cache, retry mechanism
 - 🔄 **Phase 5 — Lịch sử nâng cao**: export CSV/PDF, batch nhiều ảnh
 - ⬜ **Phase 6 — Auth & Admin**: đăng nhập, quản lý tier người dùng

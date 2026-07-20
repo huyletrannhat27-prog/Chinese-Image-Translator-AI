@@ -1,75 +1,71 @@
 import { NextRequest, NextResponse } from 'next/server';
-import OpenAI from 'openai';
+import {
+  buildVisionTranslationPrompt,
+  createVisionResponse,
+  parseVisionTranslation,
+  readVisionInput,
+} from '@/lib/translation/vision';
 
 // Tăng timeout
 export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { text, target = 'vi' } = body;
+    const { text, target, image } = await readVisionInput(req);
 
-    if (!text || text.trim().length === 0) {
+    if (!text.trim() && !image) {
       return NextResponse.json(
-        { error: 'Không có văn bản để dịch' },
+        { error: 'Không có văn bản hoặc hình ảnh để dịch' },
         { status: 400 }
       );
     }
 
-    // Kiểm tra API key
-    if (!process.env.OPENAI_API_KEY) {
-      // Fallback: gọi Gemini
-      const geminiResponse = await fetch(`${req.nextUrl.origin}/api/translate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, target }),
+    const apiKey = process.env.OPENAI_API_KEY?.trim();
+    if (!apiKey || /^your_/i.test(apiKey)) {
+      return NextResponse.json(
+        { error: 'Chưa cấu hình OPENAI_API_KEY trên server', code: 'MISSING_OPENAI_API_KEY' },
+        { status: 503 }
+      );
+    }
+
+    const prompt = buildVisionTranslationPrompt(text, target);
+    const content: Array<Record<string, unknown>> = [{ type: 'input_text', text: prompt }];
+    if (image) {
+      content.push({
+        type: 'input_image',
+        image_url: `data:${image.mimeType};base64,${image.data}`,
+        detail: 'high',
       });
-      return geminiResponse;
     }
 
-    const openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
+    const response = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: process.env.OPENAI_MODEL || 'gpt-5.6-terra',
+        input: [{ role: 'user', content }],
+        reasoning: { effort: 'low' },
+        max_output_tokens: 6144,
+      }),
     });
 
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        {
-          role: 'system',
-          content: `Bạn là dịch giả chuyên nghiệp. Dịch văn bản tiếng Trung sang ${target === 'vi' ? 'Tiếng Việt' : target === 'en' ? 'Tiếng Anh' : target}.
-                    Phát hiện Giản thể (简体) hay Phồn thể (繁體).
-                    Trả về JSON: {"translation": "...", "script": "simplified|traditional|mixed"}`,
-        },
-        {
-          role: 'user',
-          content: text,
-        },
-      ],
-      temperature: 0.3,
-      max_tokens: 1024,
-    });
-
-    const content = response.choices[0].message.content || '';
-    let parsed;
-    try {
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : { translation: content, script: 'simplified' };
-    } catch (e) {
-      parsed = { translation: content, script: 'simplified' };
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data?.error?.message || `OpenAI API error: ${response.status}`);
     }
 
-    return NextResponse.json({
-      translation: parsed.translation || content,
-      detectedScript: parsed.script || 'simplified',
-      segments: [{ original: text, translated: parsed.translation || content }],
-      confidence: 0.9,
-      provider: 'openai',
-    });
-
+    const outputText = data.output_text || data.output
+      ?.flatMap((item: { content?: Array<{ type?: string; text?: string }> }) => item.content || [])
+      .find((item: { type?: string }) => item.type === 'output_text')?.text || '';
+    const parsed = parseVisionTranslation(outputText, text);
+    return NextResponse.json(createVisionResponse(parsed, 'openai'));
   } catch (error) {
     console.error('OpenAI Translation Error:', error);
     return NextResponse.json(
-      { error: 'Dịch thuật thất bại' },
+      { error: `OpenAI OCR/dịch thất bại: ${error instanceof Error ? error.message : 'Unknown error'}` },
       { status: 500 }
     );
   }

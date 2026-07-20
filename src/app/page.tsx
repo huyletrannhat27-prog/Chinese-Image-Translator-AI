@@ -19,21 +19,48 @@ import {
 import { TranslationResult } from '@/types';
 import { HistoryStorage } from '@/lib/history/storage';
 
+type AIProvider = 'gemini' | 'openai' | 'claude';
+
+async function getImageDimensions(file: File): Promise<{ width: number; height: number }> {
+  if ('createImageBitmap' in window) {
+    const bitmap = await createImageBitmap(file);
+    const dimensions = { width: bitmap.width, height: bitmap.height };
+    bitmap.close();
+    return dimensions;
+  }
+
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve({ width: img.naturalWidth, height: img.naturalHeight });
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Không đọc được kích thước ảnh'));
+    };
+    img.src = url;
+  });
+}
+
 export default function Home() {
   // States
   const [image, setImage] = useState<string | null>(null);
-  const [imageFile, setImageFile] = useState<File | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [result, setResult] = useState<TranslationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
   const [history, setHistory] = useState<TranslationResult[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [provider, setProvider] = useState<AIProvider>('gemini');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const fallbackCameraInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [cameraActive, setCameraActive] = useState(false);
-  const [stream, setStream] = useState<MediaStream | null>(null);
+  const [cameraReady, setCameraReady] = useState(false);
+  const streamRef = useRef<MediaStream | null>(null);
   const previewImgRef = useRef<HTMLImageElement>(null);
   const [overlaySize, setOverlaySize] = useState<{ width: number; height: number } | null>(null);
   const [copiedText, setCopiedText] = useState<string | null>(null);
@@ -76,44 +103,69 @@ export default function Home() {
     setHistory(HistoryStorage.load());
   }, []);
 
+  // Gắn stream sau khi cameraActive làm phần tử <video> xuất hiện trong DOM.
+  // Code cũ gắn stream trước khi render <video>, khiến ref luôn null.
+  useEffect(() => {
+    if (!cameraActive || !videoRef.current || !streamRef.current) return;
+    const video = videoRef.current;
+    video.srcObject = streamRef.current;
+    video.play().catch((err) => {
+      console.error('Camera playback error:', err);
+      setError('Đã mở camera nhưng không phát được hình ảnh. Vui lòng thử lại.');
+    });
+  }, [cameraActive]);
+
+  useEffect(() => () => {
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+  }, []);
+
   // Start camera
   const startCamera = async () => {
     // Some Android WebViews do not expose getUserMedia even though the device
     // has a camera. Fall back to the native file chooser, which can open the
     // camera through the `capture` hint on the input below.
-    if (!navigator.mediaDevices?.getUserMedia) {
-      fileInputRef.current?.click();
+    if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+      fallbackCameraInputRef.current?.click();
       return;
     }
     try {
+      setError(null);
+      setCameraReady(false);
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
+        audio: false,
       });
-      setStream(mediaStream);
-      if (videoRef.current) {
-        videoRef.current.srcObject = mediaStream;
-        await videoRef.current.play();
-        setCameraActive(true);
-      }
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      streamRef.current = mediaStream;
+      setCameraActive(true);
     } catch (err) {
-      setError('Không thể mở camera. Vui lòng kiểm tra quyền truy cập.');
+      const name = err instanceof DOMException ? err.name : '';
+      setError(
+        name === 'NotAllowedError'
+          ? 'Quyền camera đang bị chặn. Hãy cho phép Camera trong cài đặt trình duyệt rồi thử lại.'
+          : 'Không thể mở camera trực tiếp. Bạn vẫn có thể dùng nút chụp ảnh dự phòng hoặc chọn ảnh trong thư viện.'
+      );
       console.error('Camera error:', err);
     }
   };
 
   // Stop camera
   const stopCamera = () => {
-    if (stream) {
-      stream.getTracks().forEach(track => track.stop());
-      setStream(null);
-      setCameraActive(false);
-    }
+    streamRef.current?.getTracks().forEach(track => track.stop());
+    streamRef.current = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
+    setCameraReady(false);
+    setCameraActive(false);
   };
 
   // Capture photo from camera
   const capturePhoto = () => {
     if (videoRef.current && canvasRef.current) {
       const video = videoRef.current;
+      if (!cameraReady || !video.videoWidth || !video.videoHeight) {
+        setError('Camera chưa sẵn sàng, vui lòng đợi một chút rồi chụp lại.');
+        return;
+      }
       const canvas = canvasRef.current;
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
@@ -128,7 +180,6 @@ export default function Home() {
           .then(res => res.blob())
           .then(blob => {
             const file = new File([blob], `photo_${Date.now()}.jpg`, { type: 'image/jpeg' });
-            setImageFile(file);
             stopCamera();
             processImage(file);
           });
@@ -151,14 +202,15 @@ export default function Home() {
       const reader = new FileReader();
       reader.onload = (event) => {
         setImage(event.target?.result as string);
-        setImageFile(file);
         processImage(file);
       };
       reader.readAsDataURL(file);
+      e.currentTarget.value = '';
     }
   };
 
-  // Process image: OCR + Translation
+  // AI Vision nhận diện chữ và dịch trong cùng một request, không còn phụ
+  // thuộc vào Tesseract hay gói ngôn ngữ tải từ CDN.
   const processImage = async (file: File) => {
     setIsProcessing(true);
     setError(null);
@@ -167,36 +219,18 @@ export default function Home() {
     const startedAt = Date.now();
 
     try {
-      // Step 1: OCR
       setProgress(30);
-      const formData = new FormData();
-      formData.append('image', file);
-
-      const ocrResponse = await fetch('/api/ocr', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!ocrResponse.ok) {
-        const errorData = await ocrResponse.json();
-        throw new Error(errorData.error || 'OCR failed');
-      }
-
-      const ocrData = await ocrResponse.json();
-      setProgress(60);
-
-      // Step 2: Translation
-      setProgress(70);
       const translationFormData = new FormData();
       translationFormData.append('image', file);
-      translationFormData.append('text', ocrData.text || '');
+      translationFormData.append('text', '');
       translationFormData.append('target', 'vi');
-      translationFormData.append(
-        'lines',
-        JSON.stringify(ocrData.regions?.map((r: { text: string }) => r.text) || [])
-      );
+      translationFormData.append('source', 'zh');
 
-      const translateResponse = await fetch('/api/translate', {
+      const endpoint = provider === 'gemini'
+        ? '/api/translate'
+        : `/api/translate/${provider}`;
+
+      const translateResponse = await fetch(endpoint, {
         method: 'POST',
         body: translationFormData,
       });
@@ -207,10 +241,10 @@ export default function Home() {
       }
 
       const translateData = await translateResponse.json();
-      setProgress(90);
+      setProgress(85);
+      const imageDimensions = await getImageDimensions(file);
 
-      // Ưu tiên các khối ngữ nghĩa do Gemini Vision định vị. Bbox Vision dùng
-      // thang 0..1000 nên đổi sang pixel ảnh OCR để renderer overlay dùng chung.
+      // Bbox AI Vision dùng thang 0..1000; đổi sang pixel ảnh gốc để overlay.
       const visionRegions = Array.isArray(translateData.overlayRegions)
         ? translateData.overlayRegions.map((region: {
             original: string;
@@ -223,10 +257,10 @@ export default function Home() {
             orientation: region.orientation || 'horizontal',
             lineCount: Math.max(1, region.original.split(/\r?\n/).length),
             bbox: {
-              x0: region.bbox.x0 * (ocrData.imageWidth || 0) / 1000,
-              y0: region.bbox.y0 * (ocrData.imageHeight || 0) / 1000,
-              x1: region.bbox.x1 * (ocrData.imageWidth || 0) / 1000,
-              y1: region.bbox.y1 * (ocrData.imageHeight || 0) / 1000,
+              x0: region.bbox.x0 * imageDimensions.width / 1000,
+              y0: region.bbox.y0 * imageDimensions.height / 1000,
+              x1: region.bbox.x1 * imageDimensions.width / 1000,
+              y1: region.bbox.y1 * imageDimensions.height / 1000,
             },
           }))
         : undefined;
@@ -237,19 +271,17 @@ export default function Home() {
       // Build result
       const resultData: TranslationResult = {
         id: `trans_${Date.now()}`,
-        originalText: translateData.correctedText || ocrData.text,
+        originalText: translateData.correctedText || '',
         translation: translateData.translation,
         detectedScript: translateData.detectedScript || 'simplified',
-        confidence: translateData.confidence || ocrData.confidence || 0.85,
-        segments: translateData.segments || [{ original: ocrData.text, translated: translateData.translation }],
+        confidence: translateData.confidence || 0.85,
+        segments: translateData.segments || [{ original: translateData.correctedText || '', translated: translateData.translation }],
         processingTime: Date.now() - startedAt,
         createdAt: new Date(),
-        regions: visionRegions?.length ? visionRegions : ocrData.regions,
-        translatedRegions: visionTranslations?.length
-          ? visionTranslations
-          : translateData.translatedLines,
-        imageWidth: ocrData.imageWidth,
-        imageHeight: ocrData.imageHeight,
+        regions: visionRegions,
+        translatedRegions: visionTranslations,
+        imageWidth: imageDimensions.width,
+        imageHeight: imageDimensions.height,
       };
 
       setResult(resultData);
@@ -303,7 +335,6 @@ export default function Home() {
   // Reset all
   const resetAll = () => {
     setImage(null);
-    setImageFile(null);
     setResult(null);
     setError(null);
     stopCamera();
@@ -363,6 +394,22 @@ export default function Home() {
       {/* Camera / Upload */}
       {!image && !isProcessing && (
         <div className="mx-auto max-w-3xl space-y-4">
+          <div className="surface-card flex flex-col gap-2 rounded-2xl px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-bold text-slate-900">AI nhận diện & dịch</p>
+              <p className="text-xs text-slate-500">Đọc ảnh trực tiếp, không dùng Tesseract</p>
+            </div>
+            <select
+              value={provider}
+              onChange={(event) => setProvider(event.target.value as AIProvider)}
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+              aria-label="Chọn nhà cung cấp AI"
+            >
+              <option value="gemini">Google Gemini</option>
+              <option value="openai">OpenAI</option>
+              <option value="claude">Anthropic Claude</option>
+            </select>
+          </div>
           {/* Camera */}
           <div className="camera-card relative aspect-[4/3] overflow-hidden rounded-[1.75rem] bg-slate-950 sm:aspect-[16/9]">
             {cameraActive ? (
@@ -371,12 +418,16 @@ export default function Home() {
                   ref={videoRef}
                   autoPlay
                   playsInline
+                  muted
+                  onLoadedMetadata={() => setCameraReady(true)}
                   className="h-full w-full object-cover"
                 />
                 <div className="absolute inset-x-0 bottom-6 flex items-center justify-center gap-4">
                   <button
                     onClick={capturePhoto}
-                    className="rounded-full border-[3px] border-white bg-white/20 p-2 shadow-xl backdrop-blur-md transition hover:scale-105"
+                    disabled={!cameraReady}
+                    aria-label="Chụp ảnh"
+                    className="rounded-full border-[3px] border-white bg-white/20 p-2 shadow-xl backdrop-blur-md transition hover:scale-105 disabled:cursor-wait disabled:opacity-50"
                   >
                     <div className="h-12 w-12 rounded-full bg-white" />
                   </button>
@@ -415,7 +466,14 @@ export default function Home() {
             <span className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">hoặc</span>
             <div className="h-px flex-1 bg-slate-200" />
           </div>
-          <div className="flex justify-center">
+          <div className="flex flex-col justify-center gap-2 sm:flex-row">
+            <button
+              onClick={() => fallbackCameraInputRef.current?.click()}
+              className="secondary-button w-full sm:w-auto"
+            >
+              <Camera size={20} />
+              Chụp ảnh dự phòng
+            </button>
             <button
               onClick={() => fileInputRef.current?.click()}
               className="secondary-button w-full sm:w-auto"
@@ -425,6 +483,13 @@ export default function Home() {
             </button>
             <input
               ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleFileUpload}
+            />
+            <input
+              ref={fallbackCameraInputRef}
               type="file"
               accept="image/*"
               capture="environment"

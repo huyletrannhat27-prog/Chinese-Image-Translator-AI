@@ -1,83 +1,81 @@
 import { NextRequest, NextResponse } from 'next/server';
+import {
+  buildVisionTranslationPrompt,
+  createVisionResponse,
+  parseVisionTranslation,
+  readVisionInput,
+} from '@/lib/translation/vision';
 
 // Tăng timeout
 export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { text, target = 'vi' } = body;
+    const { text, target, image } = await readVisionInput(req);
 
-    if (!text || text.trim().length === 0) {
+    if (!text.trim() && !image) {
       return NextResponse.json(
-        { error: 'Không có văn bản để dịch' },
+        { error: 'Không có văn bản hoặc hình ảnh để dịch' },
         { status: 400 }
       );
     }
 
-    // Kiểm tra API key
-    if (!process.env.CLAUDE_API_KEY) {
-      // Fallback: gọi Gemini
-      const geminiResponse = await fetch(`${req.nextUrl.origin}/api/translate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, target }),
-      });
-      return geminiResponse;
+    const apiKey = [process.env.ANTHROPIC_API_KEY, process.env.CLAUDE_API_KEY]
+      .map((value) => value?.trim())
+      .find((value): value is string => Boolean(value && !/^your_/i.test(value)));
+    if (!apiKey) {
+      return NextResponse.json(
+        { error: 'Chưa cấu hình ANTHROPIC_API_KEY (hoặc CLAUDE_API_KEY) trên server', code: 'MISSING_CLAUDE_API_KEY' },
+        { status: 503 }
+      );
     }
 
-    // Claude API integration
+    const prompt = buildVisionTranslationPrompt(text, target);
+    const content: Array<Record<string, unknown>> = [];
+    if (image) {
+      content.push({
+        type: 'image',
+        source: { type: 'base64', media_type: image.mimeType, data: image.data },
+      });
+    }
+    content.push({ type: 'text', text: prompt });
+
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': process.env.CLAUDE_API_KEY || '',
+        'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-3-haiku-20240307',
-        max_tokens: 1024,
-        temperature: 0.3,
+        model: process.env.CLAUDE_MODEL || 'claude-haiku-4-5-20251001',
+        max_tokens: 6144,
+        temperature: 0.2,
         messages: [
           {
             role: 'user',
-            content: `Bạn là dịch giả chuyên nghiệp. Dịch văn bản tiếng Trung sau sang ${target === 'vi' ? 'Tiếng Việt' : target === 'en' ? 'Tiếng Anh' : target}.
-Phát hiện Giản thể (简体) hay Phồn thể (繁體).
-Trả về JSON duy nhất: {"translation": "...", "script": "simplified|traditional|mixed"}
-
-Văn bản: ${text}`,
+            content,
           },
         ],
       }),
     });
 
-    if (!response.ok) {
-      throw new Error(`Claude API error: ${response.status}`);
-    }
-
     const data = await response.json();
-    const content = data.content?.[0]?.text || '';
-
-    let parsed;
-    try {
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : { translation: content, script: 'simplified' };
-    } catch (e) {
-      parsed = { translation: content, script: 'simplified' };
+    if (!response.ok) {
+      throw new Error(data?.error?.message || `Claude API error: ${response.status}`);
     }
 
-    return NextResponse.json({
-      translation: parsed.translation || content,
-      detectedScript: parsed.script || 'simplified',
-      segments: [{ original: text, translated: parsed.translation || content }],
-      confidence: 0.9,
-      provider: 'claude',
-    });
+    const outputText = data.content
+      ?.filter((item: { type?: string }) => item.type === 'text')
+      .map((item: { text?: string }) => item.text || '')
+      .join('\n') || '';
+    const parsed = parseVisionTranslation(outputText, text);
+    return NextResponse.json(createVisionResponse(parsed, 'claude'));
 
   } catch (error) {
     console.error('Claude Translation Error:', error);
     return NextResponse.json(
-      { error: 'Dịch thuật thất bại' },
+      { error: `Claude OCR/dịch thất bại: ${error instanceof Error ? error.message : 'Unknown error'}` },
       { status: 500 }
     );
   }
