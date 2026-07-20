@@ -1,27 +1,79 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Camera, Upload, History, Copy, Download, Trash2, RefreshCw } from 'lucide-react';
+import {
+  Camera,
+  Upload,
+  History,
+  Copy,
+  Download,
+  Trash2,
+  RefreshCw,
+  Sparkles,
+  ShieldCheck,
+  Zap,
+  X,
+  Check,
+  Smartphone,
+} from 'lucide-react';
 import { TranslationResult } from '@/types';
 import { HistoryStorage } from '@/lib/history/storage';
+
+type AIProvider = 'gemini' | 'openai' | 'claude';
+
+async function getImageDimensions(file: File): Promise<{ width: number; height: number }> {
+  if ('createImageBitmap' in window) {
+    const bitmap = await createImageBitmap(file);
+    const dimensions = { width: bitmap.width, height: bitmap.height };
+    bitmap.close();
+    return dimensions;
+  }
+
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve({ width: img.naturalWidth, height: img.naturalHeight });
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Không đọc được kích thước ảnh'));
+    };
+    img.src = url;
+  });
+}
 
 export default function Home() {
   // States
   const [image, setImage] = useState<string | null>(null);
-  const [imageFile, setImageFile] = useState<File | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [result, setResult] = useState<TranslationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
   const [history, setHistory] = useState<TranslationResult[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [provider, setProvider] = useState<AIProvider>('gemini');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const fallbackCameraInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [cameraActive, setCameraActive] = useState(false);
-  const [stream, setStream] = useState<MediaStream | null>(null);
+  const [cameraReady, setCameraReady] = useState(false);
+  const streamRef = useRef<MediaStream | null>(null);
   const previewImgRef = useRef<HTMLImageElement>(null);
   const [overlaySize, setOverlaySize] = useState<{ width: number; height: number } | null>(null);
+  const [copiedText, setCopiedText] = useState<string | null>(null);
+  const [installPrompt, setInstallPrompt] = useState<Event | null>(null);
+
+  useEffect(() => {
+    const onInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setInstallPrompt(event);
+    };
+    window.addEventListener('beforeinstallprompt', onInstallPrompt);
+    return () => window.removeEventListener('beforeinstallprompt', onInstallPrompt);
+  }, []);
 
   // Đo kích thước thực tế của ảnh preview đang render (để quy đổi bbox pixel
   // của ảnh gốc sang vị trí % chính xác cho overlay bản dịch).
@@ -51,37 +103,69 @@ export default function Home() {
     setHistory(HistoryStorage.load());
   }, []);
 
+  // Gắn stream sau khi cameraActive làm phần tử <video> xuất hiện trong DOM.
+  // Code cũ gắn stream trước khi render <video>, khiến ref luôn null.
+  useEffect(() => {
+    if (!cameraActive || !videoRef.current || !streamRef.current) return;
+    const video = videoRef.current;
+    video.srcObject = streamRef.current;
+    video.play().catch((err) => {
+      console.error('Camera playback error:', err);
+      setError('Đã mở camera nhưng không phát được hình ảnh. Vui lòng thử lại.');
+    });
+  }, [cameraActive]);
+
+  useEffect(() => () => {
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+  }, []);
+
   // Start camera
   const startCamera = async () => {
+    // Some Android WebViews do not expose getUserMedia even though the device
+    // has a camera. Fall back to the native file chooser, which can open the
+    // camera through the `capture` hint on the input below.
+    if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+      fallbackCameraInputRef.current?.click();
+      return;
+    }
     try {
+      setError(null);
+      setCameraReady(false);
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
+        audio: false,
       });
-      setStream(mediaStream);
-      if (videoRef.current) {
-        videoRef.current.srcObject = mediaStream;
-        await videoRef.current.play();
-        setCameraActive(true);
-      }
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      streamRef.current = mediaStream;
+      setCameraActive(true);
     } catch (err) {
-      setError('Không thể mở camera. Vui lòng kiểm tra quyền truy cập.');
+      const name = err instanceof DOMException ? err.name : '';
+      setError(
+        name === 'NotAllowedError'
+          ? 'Quyền camera đang bị chặn. Hãy cho phép Camera trong cài đặt trình duyệt rồi thử lại.'
+          : 'Không thể mở camera trực tiếp. Bạn vẫn có thể dùng nút chụp ảnh dự phòng hoặc chọn ảnh trong thư viện.'
+      );
       console.error('Camera error:', err);
     }
   };
 
   // Stop camera
   const stopCamera = () => {
-    if (stream) {
-      stream.getTracks().forEach(track => track.stop());
-      setStream(null);
-      setCameraActive(false);
-    }
+    streamRef.current?.getTracks().forEach(track => track.stop());
+    streamRef.current = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
+    setCameraReady(false);
+    setCameraActive(false);
   };
 
   // Capture photo from camera
   const capturePhoto = () => {
     if (videoRef.current && canvasRef.current) {
       const video = videoRef.current;
+      if (!cameraReady || !video.videoWidth || !video.videoHeight) {
+        setError('Camera chưa sẵn sàng, vui lòng đợi một chút rồi chụp lại.');
+        return;
+      }
       const canvas = canvasRef.current;
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
@@ -96,7 +180,6 @@ export default function Home() {
           .then(res => res.blob())
           .then(blob => {
             const file = new File([blob], `photo_${Date.now()}.jpg`, { type: 'image/jpeg' });
-            setImageFile(file);
             stopCamera();
             processImage(file);
           });
@@ -119,14 +202,15 @@ export default function Home() {
       const reader = new FileReader();
       reader.onload = (event) => {
         setImage(event.target?.result as string);
-        setImageFile(file);
         processImage(file);
       };
       reader.readAsDataURL(file);
+      e.currentTarget.value = '';
     }
   };
 
-  // Process image: OCR + Translation
+  // AI Vision nhận diện chữ và dịch trong cùng một request, không còn phụ
+  // thuộc vào Tesseract hay gói ngôn ngữ tải từ CDN.
   const processImage = async (file: File) => {
     setIsProcessing(true);
     setError(null);
@@ -135,38 +219,20 @@ export default function Home() {
     const startedAt = Date.now();
 
     try {
-      // Step 1: OCR
       setProgress(30);
-      const formData = new FormData();
-      formData.append('image', file);
+      const translationFormData = new FormData();
+      translationFormData.append('image', file);
+      translationFormData.append('text', '');
+      translationFormData.append('target', 'vi');
+      translationFormData.append('source', 'zh');
 
-      const ocrResponse = await fetch('/api/ocr', {
+      const endpoint = provider === 'gemini'
+        ? '/api/translate'
+        : `/api/translate/${provider}`;
+
+      const translateResponse = await fetch(endpoint, {
         method: 'POST',
-        body: formData,
-      });
-
-      if (!ocrResponse.ok) {
-        const errorData = await ocrResponse.json();
-        throw new Error(errorData.error || 'OCR failed');
-      }
-
-      const ocrData = await ocrResponse.json();
-      setProgress(60);
-
-      if (!ocrData.text || ocrData.text.trim().length === 0) {
-        throw new Error('Không tìm thấy văn bản tiếng Trung trong ảnh');
-      }
-
-      // Step 2: Translation
-      setProgress(70);
-      const translateResponse = await fetch('/api/translate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: ocrData.text,
-          target: 'vi',
-          lines: ocrData.regions?.map((r: { text: string }) => r.text),
-        }),
+        body: translationFormData,
       });
 
       if (!translateResponse.ok) {
@@ -175,22 +241,47 @@ export default function Home() {
       }
 
       const translateData = await translateResponse.json();
-      setProgress(90);
+      setProgress(85);
+      const imageDimensions = await getImageDimensions(file);
+
+      // Bbox AI Vision dùng thang 0..1000; đổi sang pixel ảnh gốc để overlay.
+      const visionRegions = Array.isArray(translateData.overlayRegions)
+        ? translateData.overlayRegions.map((region: {
+            original: string;
+            translated: string;
+            orientation?: 'horizontal' | 'vertical';
+            bbox: { x0: number; y0: number; x1: number; y1: number };
+          }) => ({
+            text: region.original,
+            confidence: translateData.confidence || 0.9,
+            orientation: region.orientation || 'horizontal',
+            lineCount: Math.max(1, region.original.split(/\r?\n/).length),
+            bbox: {
+              x0: region.bbox.x0 * imageDimensions.width / 1000,
+              y0: region.bbox.y0 * imageDimensions.height / 1000,
+              x1: region.bbox.x1 * imageDimensions.width / 1000,
+              y1: region.bbox.y1 * imageDimensions.height / 1000,
+            },
+          }))
+        : undefined;
+      const visionTranslations = Array.isArray(translateData.overlayRegions)
+        ? translateData.overlayRegions.map((region: { translated: string }) => region.translated)
+        : undefined;
 
       // Build result
       const resultData: TranslationResult = {
         id: `trans_${Date.now()}`,
-        originalText: ocrData.text,
+        originalText: translateData.correctedText || '',
         translation: translateData.translation,
         detectedScript: translateData.detectedScript || 'simplified',
-        confidence: ocrData.confidence || 0.85,
-        segments: translateData.segments || [{ original: ocrData.text, translated: translateData.translation }],
+        confidence: translateData.confidence || 0.85,
+        segments: translateData.segments || [{ original: translateData.correctedText || '', translated: translateData.translation }],
         processingTime: Date.now() - startedAt,
         createdAt: new Date(),
-        regions: ocrData.regions,
-        translatedRegions: translateData.translatedLines,
-        imageWidth: ocrData.imageWidth,
-        imageHeight: ocrData.imageHeight,
+        regions: visionRegions,
+        translatedRegions: visionTranslations,
+        imageWidth: imageDimensions.width,
+        imageHeight: imageDimensions.height,
       };
 
       setResult(resultData);
@@ -213,10 +304,18 @@ export default function Home() {
   const copyText = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
-      // Show success feedback
+      setCopiedText(text);
+      window.setTimeout(() => setCopiedText(null), 1600);
     } catch (err) {
       console.error('Copy failed:', err);
     }
+  };
+
+  const installApp = async () => {
+    if (!installPrompt) return;
+    const prompt = installPrompt as Event & { prompt: () => Promise<void> };
+    await prompt.prompt();
+    setInstallPrompt(null);
   };
 
   // Clear history
@@ -236,65 +335,105 @@ export default function Home() {
   // Reset all
   const resetAll = () => {
     setImage(null);
-    setImageFile(null);
     setResult(null);
     setError(null);
     stopCamera();
   };
 
   return (
-    <div className="container max-w-4xl mx-auto px-4 py-6 pb-24">
+    <div className="app-shell mx-auto min-h-screen max-w-6xl px-4 pb-24 pt-5 sm:px-6 lg:px-8">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-            🀄 Dịch Ảnh Trung - Việt
-          </h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Chụp ảnh → OCR → Dịch ngay
-          </p>
+      <header className="mb-6 flex items-center justify-between rounded-2xl border border-white/70 bg-white/75 px-4 py-3 shadow-sm backdrop-blur-xl sm:px-5">
+        <div className="flex items-center gap-3">
+          <div className="logo-mark">译</div>
+          <div>
+            <h1 className="text-base font-extrabold tracking-tight text-slate-950 sm:text-lg">
+              Hanzi Lens
+            </h1>
+            <p className="text-xs font-medium text-slate-500">Dịch ảnh Trung → Việt bằng AI</p>
+          </div>
         </div>
         <div className="flex gap-2">
+          {installPrompt && (
+            <button onClick={installApp} className="icon-button" title="Cài ứng dụng" aria-label="Cài ứng dụng">
+              <Smartphone size={19} />
+            </button>
+          )}
           <button
             onClick={() => setShowHistory(!showHistory)}
-            className="p-2 rounded-lg bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600 transition"
+            className="icon-button relative"
+            aria-label="Mở lịch sử"
           >
-            <History size={20} className="text-gray-700 dark:text-gray-300" />
+            <History size={19} />
+            {history.length > 0 && <span className="history-count">{Math.min(history.length, 99)}</span>}
           </button>
           {result && (
             <button
               onClick={resetAll}
-              className="p-2 rounded-lg bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600 transition"
+              className="icon-button"
+              aria-label="Dịch ảnh mới"
             >
-              <RefreshCw size={20} className="text-gray-700 dark:text-gray-300" />
+              <RefreshCw size={19} />
             </button>
           )}
         </div>
-      </div>
+      </header>
+
+      {!image && !isProcessing && (
+        <section className="mb-7 pt-5 text-center sm:pt-8">
+          <div className="eyebrow"><Sparkles size={14} /> Nhanh · Chính xác · Riêng tư</div>
+          <h2 className="mx-auto mt-4 max-w-3xl text-3xl font-black tracking-[-0.04em] text-slate-950 sm:text-5xl">
+            Hiểu mọi dòng chữ Trung<br className="hidden sm:block" /> chỉ với <span className="gradient-text">một tấm ảnh</span>
+          </h2>
+          <p className="mx-auto mt-4 max-w-xl text-sm leading-6 text-slate-600 sm:text-base">
+            Chụp menu, biển báo hoặc tài liệu. AI tự nhận diện chữ Giản thể, Phồn thể và dịch sang tiếng Việt tự nhiên.
+          </p>
+        </section>
+      )}
 
       {/* Camera / Upload */}
       {!image && !isProcessing && (
-        <div className="space-y-4">
+        <div className="mx-auto max-w-3xl space-y-4">
+          <div className="surface-card flex flex-col gap-2 rounded-2xl px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-bold text-slate-900">AI nhận diện & dịch</p>
+              <p className="text-xs text-slate-500">Đọc ảnh trực tiếp, không dùng Tesseract</p>
+            </div>
+            <select
+              value={provider}
+              onChange={(event) => setProvider(event.target.value as AIProvider)}
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+              aria-label="Chọn nhà cung cấp AI"
+            >
+              <option value="gemini">Google Gemini</option>
+              <option value="openai">OpenAI</option>
+              <option value="claude">Anthropic Claude</option>
+            </select>
+          </div>
           {/* Camera */}
-          <div className="relative rounded-2xl overflow-hidden bg-black aspect-[4/3]">
+          <div className="camera-card relative aspect-[4/3] overflow-hidden rounded-[1.75rem] bg-slate-950 sm:aspect-[16/9]">
             {cameraActive ? (
               <>
                 <video
                   ref={videoRef}
                   autoPlay
                   playsInline
-                  className="w-full h-full object-cover"
+                  muted
+                  onLoadedMetadata={() => setCameraReady(true)}
+                  className="h-full w-full object-cover"
                 />
-                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-4">
+                <div className="absolute inset-x-0 bottom-6 flex items-center justify-center gap-4">
                   <button
                     onClick={capturePhoto}
-                    className="p-4 rounded-full bg-white/20 backdrop-blur-md border-2 border-white hover:bg-white/30 transition"
+                    disabled={!cameraReady}
+                    aria-label="Chụp ảnh"
+                    className="rounded-full border-[3px] border-white bg-white/20 p-2 shadow-xl backdrop-blur-md transition hover:scale-105 disabled:cursor-wait disabled:opacity-50"
                   >
-                    <div className="w-12 h-12 rounded-full border-4 border-white" />
+                    <div className="h-12 w-12 rounded-full bg-white" />
                   </button>
                   <button
                     onClick={stopCamera}
-                    className="px-4 py-2 rounded-lg bg-red-500/80 backdrop-blur-md text-white text-sm"
+                    className="rounded-full bg-slate-950/65 px-4 py-2 text-sm font-semibold text-white backdrop-blur-md"
                   >
                     Đóng
                   </button>
@@ -302,20 +441,18 @@ export default function Home() {
               </>
             ) : (
               <>
-                <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-blue-500/10 to-indigo-500/10">
-                  <Camera size={64} className="text-gray-400 mb-4" />
-                  <p className="text-gray-500 dark:text-gray-400 text-center">
-                    Mở camera để chụp ảnh<br />
-                    <span className="text-sm">hoặc upload ảnh từ máy</span>
-                  </p>
+                <div className="camera-empty flex h-full w-full flex-col items-center justify-center px-8 text-center">
+                  <div className="camera-icon"><Camera size={30} /></div>
+                  <p className="mt-4 text-lg font-bold text-slate-900">Đưa văn bản vào khung hình</p>
+                  <p className="mt-1 max-w-sm text-sm leading-6 text-slate-500">Ảnh rõ nét, đủ sáng sẽ cho kết quả chính xác nhất</p>
                 </div>
-                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-4">
+                <div className="absolute inset-x-0 bottom-6 flex justify-center">
                   <button
                     onClick={startCamera}
-                    className="px-6 py-3 rounded-xl bg-blue-600 text-white font-medium hover:bg-blue-700 transition flex items-center gap-2"
+                    className="primary-button"
                   >
                     <Camera size={20} />
-                    Mở Camera
+                    Mở camera
                   </button>
                 </div>
               </>
@@ -324,13 +461,25 @@ export default function Home() {
           </div>
 
           {/* Upload */}
-          <div className="flex justify-center">
+          <div className="flex items-center gap-3">
+            <div className="h-px flex-1 bg-slate-200" />
+            <span className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">hoặc</span>
+            <div className="h-px flex-1 bg-slate-200" />
+          </div>
+          <div className="flex flex-col justify-center gap-2 sm:flex-row">
+            <button
+              onClick={() => fallbackCameraInputRef.current?.click()}
+              className="secondary-button w-full sm:w-auto"
+            >
+              <Camera size={20} />
+              Chụp ảnh dự phòng
+            </button>
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="px-6 py-3 rounded-xl border-2 border-dashed border-gray-300 dark:border-slate-600 hover:border-blue-500 dark:hover:border-blue-400 transition flex items-center gap-2 text-gray-600 dark:text-gray-300"
+              className="secondary-button w-full sm:w-auto"
             >
               <Upload size={20} />
-              Chọn ảnh từ máy
+              Chọn ảnh trong thư viện
             </button>
             <input
               ref={fileInputRef}
@@ -339,26 +488,41 @@ export default function Home() {
               className="hidden"
               onChange={handleFileUpload}
             />
+            <input
+              ref={fallbackCameraInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={handleFileUpload}
+            />
+          </div>
+          <div className="grid grid-cols-3 gap-2 pt-3 sm:gap-4">
+            <div className="trust-item"><Zap size={17} /><span>Xử lý nhanh</span></div>
+            <div className="trust-item"><ShieldCheck size={17} /><span>Không lưu ảnh</span></div>
+            <div className="trust-item"><Sparkles size={17} /><span>Dịch bằng AI</span></div>
           </div>
         </div>
       )}
 
       {/* Processing */}
       {isProcessing && (
-        <div className="space-y-4">
-          <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-lg">
+        <div className="mx-auto max-w-3xl space-y-4 pt-8">
+          <div className="surface-card rounded-[1.75rem] p-6 sm:p-8">
             <div className="flex items-center gap-4 mb-4">
-              <div className="animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent" />
+              <div className="relative grid h-12 w-12 place-items-center rounded-2xl bg-indigo-50 text-indigo-600">
+                <Sparkles size={22} className="animate-pulse" />
+              </div>
               <div>
-                <p className="font-medium text-gray-900 dark:text-white">
-                  {progress < 50 ? 'Đang OCR...' : progress < 80 ? 'Đang dịch...' : 'Hoàn tất...'}
+                <p className="font-bold text-slate-900">
+                  {progress < 50 ? 'Đang đọc văn bản...' : progress < 80 ? 'AI đang dịch...' : 'Sắp hoàn tất...'}
                 </p>
-                <p className="text-sm text-gray-500">{Math.round(progress)}%</p>
+                <p className="mt-0.5 text-sm text-slate-500">Vui lòng giữ ứng dụng đang mở · {Math.round(progress)}%</p>
               </div>
             </div>
-            <div className="w-full h-2 bg-gray-200 dark:bg-slate-700 rounded-full overflow-hidden">
+            <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
               <div
-                className="h-full bg-blue-600 rounded-full transition-all duration-500"
+                className="progress-fill h-full rounded-full transition-all duration-500"
                 style={{ width: `${progress}%` }}
               />
             </div>
@@ -368,9 +532,9 @@ export default function Home() {
 
       {/* Error */}
       {error && (
-        <div className="mt-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl text-red-700 dark:text-red-300">
-          <p className="font-medium">⚠️ Lỗi</p>
-          <p className="text-sm">{error}</p>
+        <div className="mx-auto mt-4 max-w-3xl rounded-2xl border border-rose-200 bg-rose-50 p-4 text-rose-700">
+          <p className="font-bold">Không thể xử lý ảnh</p>
+          <p className="mt-1 text-sm">{error}</p>
           <button
             onClick={() => setError(null)}
             className="mt-2 text-sm text-red-600 dark:text-red-400 hover:underline"
@@ -382,11 +546,20 @@ export default function Home() {
 
       {/* Result */}
       {result && !isProcessing && (
-        <div className="mt-4 space-y-4 animate-fadeIn">
+        <div className="mx-auto mt-4 max-w-4xl space-y-4 animate-fadeIn">
+          <div className="flex items-end justify-between pb-1">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-indigo-600">Kết quả bản dịch</p>
+              <h2 className="mt-1 text-2xl font-black tracking-tight text-slate-950">Ảnh của bạn đã sẵn sàng</h2>
+            </div>
+            <button onClick={resetAll} className="secondary-button hidden sm:flex">
+              <RefreshCw size={17} /> Ảnh mới
+            </button>
+          </div>
           {/* Preview + overlay bản dịch đè lên đúng vị trí chữ gốc */}
           {image && (
-            <div className="flex justify-center rounded-xl overflow-hidden bg-gray-100 dark:bg-slate-700">
-              <div className="relative inline-block max-w-full">
+            <div className="surface-card flex justify-center overflow-visible rounded-[1.5rem] p-2">
+              <div className="relative inline-block max-w-full overflow-hidden rounded-[1.1rem]">
                 {/* eslint-disable-next-line @next/next/no-img-element -- local base64 preview, not a remote asset to optimize */}
                 <img
                   ref={previewImgRef}
@@ -409,20 +582,25 @@ export default function Home() {
                     const width = (region.bbox.x1 - region.bbox.x0) * scaleX;
                     const height = (region.bbox.y1 - region.bbox.y0) * scaleY;
 
-                    // Cỡ chữ ước lượng theo DIỆN TÍCH ô so với độ dài bản dịch
-                    // (tiếng Việt luôn dài hơn tiếng Trung gốc khá nhiều) thay vì
-                    // theo chiều cao ô cố định - ô càng rộng/cao và câu càng ngắn
-                    // thì chữ càng to, tránh chữ quá to tràn ra hoặc quá nhỏ khó đọc.
-                    const lineHeightFactor = 1.15;
-                    const rawFontSize = Math.sqrt((width * height) / (0.65 * Math.max(translated.length, 1)));
-                    const fontSize = Math.max(8, Math.min(28, rawFontSize));
-                    const maxLines = Math.max(1, Math.floor(height / (fontSize * lineHeightFactor)));
+                    const isVertical = region.orientation === 'vertical';
+                    // Dùng đúng bbox chữ gốc, tuyệt đối không nới ô sang vùng kế
+                    // bên. Cỡ chữ co theo diện tích và độ dài bản dịch để vừa ô.
+                    const lineHeightFactor = 1.05;
+                    const usableWidth = Math.max(width - 2, 1);
+                    const usableHeight = Math.max(height - 2, 1);
+                    const areaFontSize = Math.sqrt(
+                      (usableWidth * usableHeight) / Math.max(translated.length * 0.62, 1)
+                    );
+                    const directionLimit = isVertical
+                      ? usableWidth * 0.72
+                      : usableHeight / lineHeightFactor;
+                    const fontSize = Math.max(4, Math.min(13, areaFontSize, directionLimit));
 
                     return (
                       <div
                         key={idx}
                         title={region.text}
-                        className="absolute flex items-center justify-center text-center bg-white dark:bg-slate-900 text-gray-900 dark:text-white shadow ring-1 ring-black/10 overflow-hidden px-0.5"
+                        className="absolute flex items-center justify-center text-center bg-white/90 dark:bg-slate-900/90 text-gray-900 dark:text-white ring-1 ring-blue-500/25 overflow-hidden px-px"
                         style={{
                           left: `${left}px`,
                           top: `${top}px`,
@@ -430,22 +608,12 @@ export default function Home() {
                           height: `${height}px`,
                           fontSize: `${fontSize}px`,
                           lineHeight: lineHeightFactor,
-                          // Đoạn sau (idx lớn hơn = nằm dưới trên ảnh) đè lên phần
-                          // tràn của đoạn trước nếu 2 đoạn ở gần nhau - tránh chữ
-                          // tràn ra bị 2 ô đè lẫn lộn, khó đọc.
-                          zIndex: idx,
+                          writingMode: isVertical ? 'vertical-rl' : 'horizontal-tb',
+                          textOrientation: isVertical ? 'mixed' : undefined,
+                          zIndex: 1,
                         }}
                       >
-                        <span
-                          style={{
-                            display: '-webkit-box',
-                            WebkitLineClamp: maxLines,
-                            WebkitBoxOrient: 'vertical',
-                            overflow: 'hidden',
-                          }}
-                        >
-                          {translated}
-                        </span>
+                        <span className="whitespace-pre-wrap break-words">{translated}</span>
                       </div>
                     );
                   })}
@@ -454,22 +622,22 @@ export default function Home() {
           )}
 
           {/* Confidence */}
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-gray-500">Độ chính xác:</span>
-            <div className="flex-1 h-2 bg-gray-200 dark:bg-slate-700 rounded-full overflow-hidden">
+          <div className="surface-card flex items-center gap-3 rounded-2xl px-4 py-3">
+            <span className="text-sm font-medium text-slate-500">Độ chính xác</span>
+            <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100">
               <div
-                className="h-full bg-green-500 rounded-full"
+                className="h-full rounded-full bg-emerald-500"
                 style={{ width: `${Math.round(result.confidence * 100)}%` }}
               />
             </div>
-            <span className="text-sm font-medium">
+            <span className="text-sm font-bold text-emerald-600">
               {Math.round(result.confidence * 100)}%
             </span>
           </div>
 
           {/* Script detection */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs px-2 py-1 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
+          <div className="flex items-center gap-2 px-1">
+            <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-700">
               {result.detectedScript === 'simplified' ? '简体 Giản thể' :
                result.detectedScript === 'traditional' ? '繁體 Phồn thể' : 'Hỗn hợp'}
             </span>
@@ -479,9 +647,9 @@ export default function Home() {
           </div>
 
           {/* Original text */}
-          <div className="bg-white dark:bg-slate-800 rounded-xl p-4 border border-gray-200 dark:border-slate-700">
+          <div className="surface-card rounded-[1.35rem] p-5">
             <div className="flex justify-between items-center mb-2">
-              <h3 className="font-medium text-gray-700 dark:text-gray-300">📝 Văn bản gốc</h3>
+              <h3 className="font-bold text-slate-700">Văn bản gốc</h3>
               <button
                 onClick={() => copyText(result.originalText)}
                 className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-slate-700 transition"
@@ -489,15 +657,15 @@ export default function Home() {
                 <Copy size={16} className="text-gray-500" />
               </button>
             </div>
-            <p className="text-gray-900 dark:text-white whitespace-pre-wrap text-lg">
+            <p className="whitespace-pre-wrap text-lg leading-8 text-slate-900">
               {result.originalText}
             </p>
           </div>
 
           {/* Translation */}
-          <div className="bg-green-50 dark:bg-green-900/10 rounded-xl p-4 border border-green-200 dark:border-green-800">
+          <div className="translation-card rounded-[1.35rem] p-5">
             <div className="flex justify-between items-center mb-2">
-              <h3 className="font-medium text-green-700 dark:text-green-300">🌍 Bản dịch (Tiếng Việt)</h3>
+              <h3 className="font-bold text-emerald-800">Bản dịch tiếng Việt</h3>
               <button
                 onClick={() => copyText(result.translation)}
                 className="p-1.5 rounded hover:bg-green-100 dark:hover:bg-green-800/30 transition"
@@ -505,7 +673,7 @@ export default function Home() {
                 <Copy size={16} className="text-green-600 dark:text-green-400" />
               </button>
             </div>
-            <p className="text-gray-900 dark:text-white whitespace-pre-wrap text-lg">
+            <p className="whitespace-pre-wrap text-lg font-medium leading-8 text-slate-900">
               {result.translation}
             </p>
           </div>
@@ -530,7 +698,7 @@ export default function Home() {
           )}
 
           {/* Actions */}
-          <div className="flex gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row">
             <button
               onClick={() => {
                 // Download as text file
@@ -543,14 +711,14 @@ export default function Home() {
                 a.click();
                 URL.revokeObjectURL(url);
               }}
-              className="flex-1 px-4 py-2 rounded-lg bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-slate-600 transition flex items-center justify-center gap-2"
+              className="secondary-button flex-1"
             >
               <Download size={18} />
               Tải xuống
             </button>
             <button
               onClick={resetAll}
-              className="flex-1 px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition flex items-center justify-center gap-2"
+              className="primary-button flex-1"
             >
               <RefreshCw size={18} />
               Dịch tiếp
@@ -561,10 +729,10 @@ export default function Home() {
 
       {/* History sidebar */}
       {showHistory && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex justify-end">
-          <div className="w-full max-w-sm h-full bg-white dark:bg-slate-900 shadow-2xl overflow-y-auto animate-slideIn">
-            <div className="sticky top-0 bg-white dark:bg-slate-900 p-4 border-b dark:border-slate-700 flex justify-between items-center">
-              <h2 className="text-lg font-bold">📋 Lịch sử dịch</h2>
+        <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/35 backdrop-blur-sm" onClick={() => setShowHistory(false)}>
+          <div className="h-full w-full max-w-md overflow-y-auto bg-[#fbfcff] shadow-2xl animate-slideIn" onClick={(event) => event.stopPropagation()}>
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-100 bg-white/90 p-5 backdrop-blur-xl">
+              <div><p className="text-xs font-bold uppercase tracking-widest text-indigo-600">Đã lưu</p><h2 className="text-xl font-black text-slate-950">Lịch sử dịch</h2></div>
               <div className="flex gap-2">
                 {history.length > 0 && (
                   <button
@@ -578,7 +746,7 @@ export default function Home() {
                   onClick={() => setShowHistory(false)}
                   className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-700 transition"
                 >
-                  ✕
+                  <X size={19} />
                 </button>
               </div>
             </div>
@@ -622,6 +790,11 @@ export default function Home() {
               )}
             </div>
           </div>
+        </div>
+      )}
+      {copiedText && (
+        <div className="fixed bottom-6 left-1/2 z-[60] flex -translate-x-1/2 items-center gap-2 rounded-full bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white shadow-xl">
+          <Check size={16} className="text-emerald-400" /> Đã sao chép
         </div>
       )}
     </div>

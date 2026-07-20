@@ -1,20 +1,23 @@
 import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
+import PwaRegister from '@/components/PwaRegister';
 
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'Chinese Image Translator AI',
-  description: 'AI-powered Chinese image translator with OCR and LLM',
+  title: 'Hanzi Lens — Dịch ảnh Trung Việt',
+  description: 'Chụp hoặc tải ảnh để nhận diện và dịch tiếng Trung sang tiếng Việt bằng AI.',
   manifest: '/manifest.json',
+  applicationName: 'Hanzi Lens',
+  appleWebApp: { capable: true, statusBarStyle: 'default', title: 'Hanzi Lens' },
 };
 
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
-  themeColor: '#2563eb',
+  themeColor: '#4f46e5',
 };
 
 export default function RootLayout({
@@ -29,9 +32,8 @@ export default function RootLayout({
         <link rel="apple-touch-icon" href="/icon-192.png" />
       </head>
       <body className={inter.className}>
-        <main className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
-          {children}
-        </main>
+        <PwaRegister />
+        <main className="min-h-screen">{children}</main>
       </body>
     </html>
   );

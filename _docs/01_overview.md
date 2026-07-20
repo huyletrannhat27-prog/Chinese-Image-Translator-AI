@@ -12,9 +12,8 @@ Xây dựng một ứng dụng web cho phép người dùng upload ảnh chứa 
 |---|---|---|
 | Framework | Next.js 14 | App Router, React Server Components |
 | UI | Tailwind CSS + Shadcn/ui | Giao diện hiện đại, responsive |
-| OCR | Tesseract.js (server, qua API route) | Có thể mở rộng thêm Google Vision API fallback |
-| Dịch thuật | Gemini (chính) / OpenAI / Claude (fallback) | LLM, giữ ngữ cảnh và thành ngữ |
-| Xử lý ảnh | Sharp | Resize, tối ưu trước khi OCR |
+| OCR + dịch | Gemini / OpenAI / Claude Vision | Chọn trực tiếp trên giao diện |
+| Xử lý ảnh | Sharp | Xoay theo EXIF, resize, tối ưu trước khi gửi AI |
 | File upload | Next.js Route Handler (FormData) | Xử lý multipart/form-data |
 | Lịch sử | localStorage (client) | Xem `src/lib/history/storage.ts` |
 | Deploy | Vercel / Docker | |
@@ -51,9 +50,9 @@ Xây dựng một ứng dụng web cho phép người dùng upload ảnh chứa 
 
 1. **Chụp ảnh / Upload ảnh** — Camera trực tiếp hoặc chọn file từ máy
 2. **Xem trước ảnh** — Hiển thị ảnh sau khi chụp/upload
-3. **OCR** — Tesseract.js nhận diện chữ Hán (giản thể + phồn thể)
+3. **OCR + dịch** — AI Vision nhận diện chữ Hán và dịch trong một lần xử lý
 4. **Phát hiện ngôn ngữ** — Tự động nhận diện Giản thể / Phồn thể
-5. **Dịch văn bản** — Gọi Gemini API để dịch sang tiếng Việt
+5. **Dịch văn bản** — Chọn Gemini, OpenAI hoặc Claude để dịch sang tiếng Việt
 6. **Copy kết quả** — Sao chép nội dung gốc và bản dịch
 7. **Lịch sử dịch** — Lưu, xem lại, xoá, export JSON
 
@@ -61,7 +60,6 @@ Xây dựng một ứng dụng web cho phép người dùng upload ảnh chứa 
 
 ## Tính năng mở rộng (Future) — xem chi tiết ở `02_phases.md`
 
-- Chọn provider dịch (Gemini / OpenAI / Claude) ngay trên UI
 - Chọn ngôn ngữ đích khác ngoài tiếng Việt
 - Dịch file PDF nhiều trang
 - Dịch theo batch (nhiều ảnh cùng lúc)

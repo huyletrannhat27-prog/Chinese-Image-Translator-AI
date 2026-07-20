@@ -1,11 +1,13 @@
 {
-  "name": "Chinese Image Translator AI",
-  "short_name": "Translator AI",
+  "id": "/",
+  "name": "Hanzi Lens - Dịch ảnh Trung Việt",
+  "short_name": "Hanzi Lens",
   "description": "Dịch tiếng Trung từ hình ảnh bằng AI - Không cần đăng nhập, chụp ảnh là dịch ngay!",
-  "start_url": "/",
+  "start_url": "/?source=pwa",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#2563eb",
+  "background_color": "#f8faff",
+  "theme_color": "#4f46e5",
   "orientation": "portrait",
   "categories": ["photography", "utilities", "productivity"],
   "icons": [
@@ -20,14 +22,6 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
-    }
-  ],
-  "screenshots": [
-    {
-      "src": "/screenshot-1.png",
-      "sizes": "1080x1920",
-      "type": "image/png",
-      "form_factor": "narrow"
     }
   ],
   "shortcuts": [

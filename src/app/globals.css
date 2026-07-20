@@ -54,8 +54,91 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
+    min-height: 100vh;
+    background:
+      radial-gradient(circle at 8% 4%, rgba(199, 210, 254, 0.58), transparent 29rem),
+      radial-gradient(circle at 92% 15%, rgba(167, 243, 208, 0.42), transparent 27rem),
+      linear-gradient(180deg, #f8faff 0%, #ffffff 45%, #f7f9fc 100%);
   }
+
+  button, a { -webkit-tap-highlight-color: transparent; }
+  button:focus-visible, a:focus-visible { @apply outline-none ring-2 ring-indigo-500 ring-offset-2; }
+}
+
+@layer components {
+  .logo-mark {
+    @apply grid h-10 w-10 place-items-center rounded-xl text-lg font-black text-white shadow-lg;
+    background: linear-gradient(135deg, #4f46e5, #7c3aed);
+    box-shadow: 0 8px 22px rgba(79, 70, 229, .28);
+  }
+
+  .icon-button {
+    @apply grid h-10 w-10 place-items-center rounded-xl border border-slate-200/80 bg-white text-slate-600 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-indigo-200 hover:text-indigo-600;
+  }
+
+  .history-count {
+    @apply absolute -right-1 -top-1 grid min-h-[17px] min-w-[17px] place-items-center rounded-full bg-indigo-600 px-1 text-[9px] font-bold text-white ring-2 ring-white;
+  }
+
+  .eyebrow {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-indigo-100 bg-indigo-50/80 px-3 py-1.5 text-[11px] font-extrabold uppercase tracking-[0.12em] text-indigo-700;
+  }
+
+  .gradient-text {
+    background: linear-gradient(100deg, #4f46e5, #7c3aed 48%, #059669);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .camera-card {
+    border: 1px solid rgba(255,255,255,.9);
+    box-shadow: 0 28px 70px rgba(30, 41, 59, .14), 0 4px 16px rgba(79,70,229,.08);
+  }
+
+  .camera-empty {
+    background:
+      linear-gradient(rgba(255,255,255,.94), rgba(248,250,252,.96)),
+      radial-gradient(circle at center, #c7d2fe, transparent 65%);
+  }
+
+  .camera-empty::before {
+    content: '';
+    @apply absolute inset-5 rounded-[1.2rem] border-2 border-dashed border-indigo-200/80 sm:inset-7;
+  }
+
+  .camera-icon {
+    @apply relative grid h-16 w-16 place-items-center rounded-2xl bg-indigo-600 text-white;
+    box-shadow: 0 14px 32px rgba(79,70,229,.3);
+  }
+
+  .primary-button {
+    @apply inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-6 py-3 text-sm font-bold text-white shadow-lg transition duration-200 hover:-translate-y-0.5 hover:bg-indigo-700 active:translate-y-0;
+    box-shadow: 0 12px 28px rgba(79,70,229,.25);
+  }
+
+  .secondary-button {
+    @apply inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-6 py-3 text-sm font-bold text-slate-700 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-indigo-200 hover:text-indigo-700;
+  }
+
+  .trust-item {
+    @apply flex flex-col items-center justify-center gap-1.5 rounded-xl border border-white bg-white/55 px-2 py-3 text-center text-[10px] font-bold text-slate-500 backdrop-blur sm:flex-row sm:text-xs;
+  }
+
+  .trust-item svg { @apply text-indigo-500; }
+
+  .surface-card {
+    @apply border border-white/90 bg-white shadow-sm;
+    box-shadow: 0 12px 40px rgba(30,41,59,.07);
+  }
+
+  .translation-card {
+    @apply border border-emerald-100 bg-emerald-50/80;
+    box-shadow: 0 12px 38px rgba(5,150,105,.07);
+  }
+
+  .progress-fill { background: linear-gradient(90deg, #4f46e5, #8b5cf6, #10b981); }
 }
 
 /* Scrollbar */
@@ -76,6 +159,27 @@
 
 ::-webkit-scrollbar-thumb:hover {
   background: hsl(var(--primary) / 0.8);
+}
+
+@keyframes slideIn {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-slideIn { animation: slideIn .28s cubic-bezier(.2,.8,.2,1); }
+.animate-fadeIn { animation: fadeIn .35s ease-out; }
+
+@media (max-width: 640px) {
+  .app-shell { padding-bottom: calc(5.5rem + env(safe-area-inset-bottom)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
 
 /* Camera overlay */

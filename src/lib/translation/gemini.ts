@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI } from '@google/genai';
 
 export interface TranslationResult {
   translation: string;
@@ -11,11 +11,11 @@ export interface TranslationResult {
 }
 
 export class GeminiTranslator {
-  private genAI: GoogleGenerativeAI;
+  private genAI: GoogleGenAI;
   private model: string;
 
-  constructor(apiKey: string, model: string = 'gemini-2.5-flash') {
-    this.genAI = new GoogleGenerativeAI(apiKey);
+  constructor(apiKey: string, model: string = 'gemini-3.5-flash') {
+    this.genAI = new GoogleGenAI({ apiKey });
     this.model = model;
   }
 
@@ -24,22 +24,22 @@ export class GeminiTranslator {
     target: string = 'vi',
     source: string = 'zh'
   ): Promise<TranslationResult> {
-    const model = this.genAI.getGenerativeModel({
-      model: this.model,
-      generationConfig: {
+    const prompt = this.buildPrompt(text, target, source);
+
+    try {
+      const response = await this.genAI.models.generateContent({
+        model: this.model,
+        contents: prompt,
+        config: {
         temperature: 0.3,
         maxOutputTokens: 1024,
         topP: 0.95,
         topK: 40,
+        responseMimeType: 'application/json',
+        },
       },
-    });
-
-    const prompt = this.buildPrompt(text, target, source);
-
-    try {
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      const content = response.text();
+      );
+      const content = response.text || '';
 
       // Parse JSON response
       return this.parseResponse(content, text);
