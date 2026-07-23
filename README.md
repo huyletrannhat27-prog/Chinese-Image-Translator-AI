@@ -131,6 +131,10 @@ Xem chi tiết từng phase tại [`_docs/02_phases.md`](_docs/02_phases.md). T�
 - 🔄 **Phase 5 — Lịch sử nâng cao**: export CSV/PDF, batch nhiều ảnh
 - ⬜ **Phase 6 — Auth & Admin**: đăng nhập, quản lý tier người dùng
 
+## 📚 Tài liệu nghiên cứu
+
+- [So sánh công cụ OCR và dịch thuật](_docs/04_ocr_translation_tools.md) — ưu/nhược điểm, chi phí, khả năng offline, hỗ trợ Việt–Trung và các combo triển khai đề xuất.
+
 ---
 
 ## 🤝 Đóng góp
