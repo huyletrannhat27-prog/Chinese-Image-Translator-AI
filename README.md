@@ -136,6 +136,7 @@ Xem chi tiết từng phase tại [`_docs/02_phases.md`](_docs/02_phases.md). T�
 - [Công cụ OCR](_docs/04_ocr_tools.md) — các lựa chọn OCR offline, on-device, cloud và AI Vision; ưu/nhược điểm và công cụ dự án đang dùng.
 - [Công cụ dịch thuật](_docs/05_translation_tools.md) — so sánh NMT, dịch offline/self-host và LLM đa phương thức.
 - [Camera realtime và giảm độ trễ](_docs/06_realtime_camera_tools.md) — công cụ chụp/stream frame, nguyên nhân gây trễ và kiến trúc realtime đề xuất.
+- [Phase 4: rate limiting, cache và retry](_docs/07_phase4_optimization_tools.md) — mục đích, công cụ, ưu/nhược điểm và combo tối ưu đề xuất cho Next.js/Vercel.
 
 ---
 
