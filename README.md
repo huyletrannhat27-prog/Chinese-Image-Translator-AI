@@ -133,6 +133,7 @@ Xem chi tiết từng phase tại [`_docs/02_phases.md`](_docs/02_phases.md). T�
 
 ## 📚 Tài liệu nghiên cứu
 
+- [Tài liệu thuyết trình OCR và dịch thuật](_docs/08_thuyet_trinh_ocr_va_dich_thuat.md) — bản cô đọng để thuyết trình, so sánh công cụ và giải thích lựa chọn kiến trúc.
 - [Công cụ OCR](_docs/04_ocr_tools.md) — các lựa chọn OCR offline, on-device, cloud và AI Vision; ưu/nhược điểm và công cụ dự án đang dùng.
 - [Công cụ dịch thuật](_docs/05_translation_tools.md) — so sánh NMT, dịch offline/self-host và LLM đa phương thức.
 - [Camera realtime và giảm độ trễ](_docs/06_realtime_camera_tools.md) — công cụ chụp/stream frame, nguyên nhân gây trễ và kiến trúc realtime đề xuất.
