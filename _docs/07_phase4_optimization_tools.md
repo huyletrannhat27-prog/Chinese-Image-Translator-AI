@@ -32,18 +32,20 @@ Ba cơ chế bổ trợ nhau nhưng không thay thế nhau. Cache không ngăn s
 
 ## 2. Trạng thái hiện tại của dự án
 
+> Cập nhật lại 25/07/2026 sau khi triển khai rate limiting, cache và retry (bảng gốc bên dưới mô tả lúc tài liệu này mới viết, trước khi code phần này).
+
 | Hạng mục | Trạng thái | Bằng chứng trong source |
 |---|---|---|
-| Rate limiting inbound | **Chưa có** | Ba route `/api/translate*` chưa kiểm tra quota theo IP/user |
-| Cache kết quả OCR/dịch | **Chưa có** | Không có Redis/KV/cache key trong API route |
-| Lịch sử trên trình duyệt | **Đã có nhưng không phải API cache** | `HistoryStorage` lưu kết quả vào `localStorage` của từng thiết bị |
-| Retry helper | **Có code nhưng chưa dùng** | `src/utils/helpers.ts` có `retry()` với exponential backoff |
-| Retry provider thực tế | **Chưa có** | Các route chỉ gọi `fetch`/SDK một lần |
-| Phân loại một số lỗi API | **Có một phần** | OpenAI/Claude đã nhận diện 401, 403, 429 và quota/credit |
-| Timeout/cancel provider | **Chưa có** | Chưa truyền `AbortSignal` hoặc timeout cho các request cloud |
-| Tiền xử lý ảnh | **Đã có một phần** | Sharp dùng cho luồng OpenAI/Claude; Gemini vẫn có luồng xử lý riêng |
+| Rate limiting inbound | **Đã có** | `src/lib/rate-limit`: sliding window 5 req/phút/IP dùng chung cho cả 3 route `/api/translate*`, qua Upstash Ratelimit (fallback in-memory nếu chưa cấu hình Upstash) |
+| Cache kết quả OCR/dịch | **Đã có** | `src/lib/cache`: key SHA-256 theo ảnh đã chuẩn hoá + provider/model/source/target/promptVersion, qua Upstash Redis (fallback in-memory), có single-flight coalescing |
+| Lịch sử trên trình duyệt | **Đã có nhưng không phải API cache** | `HistoryStorage` lưu kết quả vào `localStorage` của từng thiết bị (không đổi so với trước) |
+| Retry helper cũ (`utils/helpers.ts`) | **Vẫn chưa dùng, không sao** | Cơ chế retry thật nằm ở `src/lib/retry` (mới, dùng `p-retry`), không dùng `retry()` cũ nữa |
+| Retry provider thực tế | **Đã có** | `src/lib/retry`: `withRetry()` áp dụng cho cả 3 route, tối đa 2 lần thử lại, backoff + jitter |
+| Phân loại lỗi API để quyết định retry | **Đã có, thống nhất cho cả 3 route** | `isRetryableStatus()`: chỉ retry 408/429/5xx/lỗi mạng; không retry 400/401/403/quota |
+| Timeout/cancel provider | **Đã có** | `createTimeoutSignal()`: `AbortController` với deadline mặc định 45s (`PROVIDER_TIMEOUT_MS`) cho mỗi lượt gọi |
+| Tiền xử lý ảnh | **Đã có, đồng bộ cả 3 route** | Route Gemini trước đây gửi ảnh thô, giờ cũng qua Sharp (rotate/resize/nén) giống OpenAI/Claude |
 
-Vì vậy dấu `⬜`/`[ ]` ở Phase 4 là đúng: dự án mới có một số nền tảng, chưa có cơ chế tối ưu hoàn chỉnh.
+Dấu `⬜`/`[ ]` ở Phase 4 mô tả đúng lúc tài liệu này mới viết (dự án mới có một số nền tảng, chưa có cơ chế tối ưu hoàn chỉnh); sau khi triển khai, `_docs/02_phases.md` đã cập nhật 3/4 mục thành `[x]`, chỉ còn tooltip hướng dẫn từng bước là chưa làm.
 
 ---
 

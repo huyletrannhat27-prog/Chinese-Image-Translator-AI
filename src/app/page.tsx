@@ -681,7 +681,7 @@ export default function Home() {
           {/* Segments */}
           {result.segments.length > 1 && (
             <div className="bg-white dark:bg-slate-800 rounded-xl p-4 border border-gray-200 dark:border-slate-700">
-              <h3 className="font-medium text-gray-700 dark:text-gray-300 mb-3">📖 Phân đoạn</h3>
+              <h3 className="font-medium text-gray-700 dark:text-gray-300 mb-3">Phân đoạn</h3>
               <div className="space-y-2">
                 {result.segments.map((seg, idx) => (
                   <div key={idx} className="grid grid-cols-2 gap-4 text-sm">

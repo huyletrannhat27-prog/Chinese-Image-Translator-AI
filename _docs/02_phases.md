@@ -1,6 +1,6 @@
 # Lộ trình phát triển — Chinese Image Translator AI
 
-## Phase 1 — Foundation ✅
+## Phase 1 — Foundation (Hoàn thành)
 
 **Mục tiêu:** Dự án chạy được, giao diện cơ bản, upload ảnh hoạt động.
 
@@ -15,7 +15,7 @@
 
 ---
 
-## Phase 2 — OCR (Optical Character Recognition) ✅
+## Phase 2 — OCR (Optical Character Recognition) (Hoàn thành)
 
 **Mục tiêu:** Trích xuất văn bản tiếng Trung từ ảnh.
 
@@ -28,7 +28,7 @@
 
 ---
 
-## Phase 3 — Phát hiện ngôn ngữ & Dịch thuật 🔄
+## Phase 3 — Phát hiện ngôn ngữ & Dịch thuật (Đang làm)
 
 **Mục tiêu:** Nhận diện loại chữ (Giản thể / Phồn thể) và dịch sang tiếng Việt.
 
@@ -43,7 +43,7 @@
 
 ---
 
-## Phase 4 — Tối ưu hóa & Trải nghiệm 🔄
+## Phase 4 — Tối ưu hóa & Trải nghiệm (Đang làm)
 
 **Mục tiêu:** Nâng cao trải nghiệm người dùng và hiệu suất.
 
@@ -57,7 +57,7 @@
 
 ---
 
-## Phase 5 — Lịch sử & Nâng cao 🔄
+## Phase 5 — Lịch sử & Nâng cao (Đang làm)
 
 **Mục tiêu:** Lưu lịch sử và các tính năng mở rộng.
 
@@ -71,7 +71,7 @@
 
 ---
 
-## Phase 6 — Authentication & Admin ⬜
+## Phase 6 — Authentication & Admin (Chưa bắt đầu)
 
 **Mục tiêu:** Cho phép user đăng ký và admin giám sát hệ thống.
 

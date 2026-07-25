@@ -138,7 +138,7 @@ export async function POST(req: NextRequest) {
                 contents,
                 config: {
                   temperature: 0.3,
-                  // 1024 quá thấp cho gemini-2.5-flash: model "thinking" tiêu tốn một phần
+                  // 1024 quá thấp cho gemini-3.5-flash: model "thinking" tiêu tốn một phần
                   // token trước khi trả JSON, dễ bị cắt cụt giữa chừng khi văn bản dài/lộn
                   // xộn (nhiều segments) - tăng lên để tránh JSON bị hỏng do cắt cụt.
                   maxOutputTokens: 6144,
