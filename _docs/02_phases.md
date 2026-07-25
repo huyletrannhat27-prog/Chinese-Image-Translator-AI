@@ -43,16 +43,16 @@
 
 ---
 
-## Phase 4 — Tối ưu hóa & Trải nghiệm ⬜
+## Phase 4 — Tối ưu hóa & Trải nghiệm 🔄
 
 **Mục tiêu:** Nâng cao trải nghiệm người dùng và hiệu suất.
 
 - [x] Copy to clipboard: copy gốc, copy dịch
-- [x] Xử lý ảnh trước khi OCR: Sharp rotate, resize và nén tối ưu
+- [x] Xử lý ảnh trước khi OCR: Sharp rotate, resize và nén tối ưu (đồng bộ cho cả 3 route Gemini/OpenAI/Claude)
 - [x] Responsive cơ bản (mobile-first, Tailwind)
-- [ ] Rate limiting: giới hạn request/phút
-- [ ] Cache kết quả dịch
-- [ ] Retry mechanism khi API thất bại
+- [x] Rate limiting: giới hạn request/phút (`src/lib/rate-limit`, sliding window, Upstash + fallback in-memory)
+- [x] Cache kết quả dịch (`src/lib/cache`, Upstash Redis + fallback in-memory, key SHA-256 theo ảnh đã chuẩn hoá + provider/model/prompt version, có single-flight)
+- [x] Retry mechanism khi API thất bại (`src/lib/retry`, dùng p-retry, backoff + jitter, tôn trọng `Retry-After`, chỉ retry lỗi tạm thời)
 - [ ] Tooltip hướng dẫn cho từng bước
 
 ---

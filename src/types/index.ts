@@ -64,6 +64,8 @@ export interface TranslateResponse {
   confidence: number;
   provider: string;
   processingTime: number;
+  // true nếu kết quả được trả từ cache Phase 4 (không gọi lại AI provider).
+  cached?: boolean;
 }
 
 // History store type
