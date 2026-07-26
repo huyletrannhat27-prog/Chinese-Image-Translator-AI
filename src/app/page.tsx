@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import {
   Camera,
   Aperture,
@@ -42,6 +42,77 @@ async function getImageDimensions(file: File): Promise<{ width: number; height: 
     };
     img.src = url;
   });
+}
+
+function FittedTranslationOverlay({
+  text,
+  title,
+  left,
+  top,
+  width,
+  height,
+  vertical,
+}: {
+  text: string;
+  title: string;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  vertical: boolean;
+}) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const textRef = useRef<HTMLSpanElement>(null);
+
+  useLayoutEffect(() => {
+    const box = boxRef.current;
+    const content = textRef.current;
+    if (!box || !content) return;
+
+    // Tìm cỡ chữ lớn nhất vẫn vừa trọn bbox. Binary search giúp chữ ngắn
+    // đủ lớn, còn câu dài tự co chính xác thay vì dùng một cỡ cố định.
+    let lower = 4;
+    let upper = Math.min(30, Math.max(6, (vertical ? width : height) * 0.9));
+    let best = lower;
+    for (let attempt = 0; attempt < 18; attempt += 1) {
+      const fontSize = (lower + upper) / 2;
+      box.style.fontSize = `${fontSize}px`;
+      const fits = content.scrollWidth <= box.clientWidth - 4
+        && content.scrollHeight <= box.clientHeight - 4;
+      if (fits) {
+        best = fontSize;
+        lower = fontSize + 0.1;
+      } else {
+        upper = fontSize - 0.1;
+      }
+    }
+    box.style.fontSize = `${best}px`;
+  }, [text, width, height, vertical]);
+
+  return (
+    <div
+      ref={boxRef}
+      title={title}
+      className="absolute flex items-center justify-center overflow-hidden bg-white px-0.5 text-center font-bold text-black shadow-sm ring-1 ring-slate-300"
+      style={{
+        left,
+        top,
+        width,
+        height,
+        lineHeight: 1.22,
+        writingMode: vertical ? 'vertical-rl' : 'horizontal-tb',
+        textOrientation: vertical ? 'mixed' : undefined,
+        zIndex: 1,
+      }}
+    >
+      <span
+        ref={textRef}
+        className="block max-h-full max-w-full whitespace-normal break-words [overflow-wrap:anywhere]"
+      >
+        {text}
+      </span>
+    </div>
+  );
 }
 
 export default function Home() {
@@ -234,6 +305,7 @@ export default function Home() {
       }
 
       const translationFormData = new FormData();
+      translationFormData.append('image', file);
       translationFormData.append('text', ocrResult.text);
       translationFormData.append('lines', JSON.stringify(ocrResult.regions?.map((region) => region.text) || []));
       translationFormData.append('target', 'vi');
@@ -253,6 +325,25 @@ export default function Home() {
       const translateData = await translateResponse.json();
       setProgress(85);
       const imageDimensions = await getImageDimensions(file);
+      const visionRegions = Array.isArray(translateData.overlayRegions)
+        ? translateData.overlayRegions.map((region: {
+            original: string;
+            translated: string;
+            orientation?: 'horizontal' | 'vertical';
+            bbox: { x0: number; y0: number; x1: number; y1: number };
+          }) => ({
+            text: region.original,
+            confidence: translateData.confidence || ocrResult.confidence,
+            orientation: region.orientation || 'horizontal',
+            lineCount: Math.max(1, region.original.split(/\r?\n/).length),
+            bbox: {
+              x0: region.bbox.x0 * imageDimensions.width / 1000,
+              y0: region.bbox.y0 * imageDimensions.height / 1000,
+              x1: region.bbox.x1 * imageDimensions.width / 1000,
+              y1: region.bbox.y1 * imageDimensions.height / 1000,
+            },
+          }))
+        : undefined;
       const ocrRegions = ocrResult.regions?.map((region) => ({
         ...region,
         bbox: {
@@ -262,7 +353,11 @@ export default function Home() {
           y1: region.bbox.y1,
         },
       }));
-      const translatedRegions = ocrRegions?.map((_, index) =>
+      const translatedRegions = visionRegions?.map((region: { text: string }) => region.text)
+        ? Array.isArray(translateData.overlayRegions)
+          ? translateData.overlayRegions.map((region: { translated: string }) => region.translated)
+          : undefined
+        : ocrRegions?.map((_, index) =>
         translateData.translatedLines?.[index]
         || translateData.segments?.[index]?.translated
         || (index === 0 ? translateData.translation : '')
@@ -271,14 +366,14 @@ export default function Home() {
       // Build result
       const resultData: TranslationResult = {
         id: `trans_${Date.now()}`,
-        originalText: ocrResult.text,
+        originalText: translateData.correctedText || ocrResult.text,
         translation: translateData.translation,
-        detectedScript: ocrResult.detectedScript,
-        confidence: ocrResult.confidence,
-        segments: translateData.segments || [{ original: ocrResult.text, translated: translateData.translation }],
+        detectedScript: translateData.detectedScript || ocrResult.detectedScript,
+        confidence: translateData.confidence || ocrResult.confidence,
+        segments: translateData.segments || [{ original: translateData.correctedText || ocrResult.text, translated: translateData.translation }],
         processingTime: Date.now() - startedAt,
         createdAt: new Date(),
-        regions: ocrRegions,
+        regions: visionRegions || ocrRegions,
         translatedRegions,
         imageWidth: imageDimensions.width,
         imageHeight: imageDimensions.height,
@@ -585,38 +680,17 @@ export default function Home() {
                     const height = (region.bbox.y1 - region.bbox.y0) * scaleY;
 
                     const isVertical = region.orientation === 'vertical';
-                    // Dùng đúng bbox chữ gốc, tuyệt đối không nới ô sang vùng kế
-                    // bên. Cỡ chữ co theo diện tích và độ dài bản dịch để vừa ô.
-                    const lineHeightFactor = 1.05;
-                    const usableWidth = Math.max(width - 2, 1);
-                    const usableHeight = Math.max(height - 2, 1);
-                    const areaFontSize = Math.sqrt(
-                      (usableWidth * usableHeight) / Math.max(translated.length * 0.62, 1)
-                    );
-                    const directionLimit = isVertical
-                      ? usableWidth * 0.72
-                      : usableHeight / lineHeightFactor;
-                    const fontSize = Math.max(4, Math.min(13, areaFontSize, directionLimit));
-
                     return (
-                      <div
+                      <FittedTranslationOverlay
                         key={idx}
+                        text={translated}
                         title={region.text}
-                        className="absolute flex items-center justify-center text-center bg-white/90 dark:bg-slate-900/90 text-gray-900 dark:text-white ring-1 ring-blue-500/25 overflow-hidden px-px"
-                        style={{
-                          left: `${left}px`,
-                          top: `${top}px`,
-                          width: `${width}px`,
-                          height: `${height}px`,
-                          fontSize: `${fontSize}px`,
-                          lineHeight: lineHeightFactor,
-                          writingMode: isVertical ? 'vertical-rl' : 'horizontal-tb',
-                          textOrientation: isVertical ? 'mixed' : undefined,
-                          zIndex: 1,
-                        }}
-                      >
-                        <span className="whitespace-pre-wrap break-words">{translated}</span>
-                      </div>
+                        left={left}
+                        top={top}
+                        width={width}
+                        height={height}
+                        vertical={isVertical}
+                      />
                     );
                   })}
               </div>

@@ -38,8 +38,25 @@ export async function recognizeChinese(
   onProgress?: (progress: number) => void
 ): Promise<OCRResult> {
   const worker = await getWorker(onProgress);
+  const bitmap = await createImageBitmap(image);
+  const longestEdge = Math.max(bitmap.width, bitmap.height);
+  const scale = Math.min(3, Math.max(1, 2400 / Math.max(longestEdge, 1)));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  const context = canvas.getContext('2d');
+  if (!context) {
+    bitmap.close();
+    throw new Error('Không thể tiền xử lý ảnh cho Tesseract');
+  }
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = 'high';
+  context.filter = 'contrast(118%)';
+  context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close();
+
   const result = await worker.recognize(
-    image,
+    canvas,
     {},
     { text: true, blocks: true }
   );
@@ -54,7 +71,12 @@ export async function recognizeChinese(
         regions.push({
           text,
           confidence: Math.max(0, Math.min(1, line.confidence / 100)),
-          bbox: line.bbox,
+          bbox: {
+            x0: line.bbox.x0 / scale,
+            y0: line.bbox.y0 / scale,
+            x1: line.bbox.x1 / scale,
+            y1: line.bbox.y1 / scale,
+          },
           lineCount: 1,
           orientation: line.bbox.y1 - line.bbox.y0 > (line.bbox.x1 - line.bbox.x0) * 1.35
             ? 'vertical'
@@ -70,5 +92,7 @@ export async function recognizeChinese(
     detectedScript: detectScript(page.text),
     language: 'chi_sim+chi_tra+eng',
     regions,
+    imageWidth: canvas.width / scale,
+    imageHeight: canvas.height / scale,
   };
 }
