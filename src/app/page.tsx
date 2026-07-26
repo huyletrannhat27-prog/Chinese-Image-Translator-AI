@@ -263,7 +263,9 @@ export default function Home() {
         },
       }));
       const translatedRegions = ocrRegions?.map((_, index) =>
-        translateData.translatedLines?.[index] || (ocrRegions?.length === 1 ? translateData.translation : '')
+        translateData.translatedLines?.[index]
+        || translateData.segments?.[index]?.translated
+        || (index === 0 ? translateData.translation : '')
       );
 
       // Build result

@@ -5,7 +5,7 @@ let workerPromise: Promise<Worker> | null = null;
 
 function getWorker(onProgress?: (progress: number) => void): Promise<Worker> {
   if (!workerPromise) {
-    workerPromise = createWorker('chi_sim+chi_tra', 1, {
+    workerPromise = createWorker('chi_sim+chi_tra+eng', 1, {
       langPath: '/tessdata',
       gzip: false,
       logger: (message) => {
@@ -38,7 +38,11 @@ export async function recognizeChinese(
   onProgress?: (progress: number) => void
 ): Promise<OCRResult> {
   const worker = await getWorker(onProgress);
-  const result = await worker.recognize(image);
+  const result = await worker.recognize(
+    image,
+    {},
+    { text: true, blocks: true }
+  );
   const page = result.data;
   const regions: OCRRegion[] = [];
 
@@ -64,7 +68,7 @@ export async function recognizeChinese(
     text: page.text.trim(),
     confidence: Math.max(0, Math.min(1, page.confidence / 100)),
     detectedScript: detectScript(page.text),
-    language: 'chi_sim+chi_tra',
+    language: 'chi_sim+chi_tra+eng',
     regions,
   };
 }

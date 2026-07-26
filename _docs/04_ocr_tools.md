@@ -6,7 +6,7 @@
 
 Dự án hiện tại dùng **Tesseract.js** chạy phía client để nhận dạng chữ Trung trước khi dịch:
 
-- Language data: `chi_sim.traineddata` và `chi_tra.traineddata` trong `public/tessdata`.
+- Language data: `chi_sim.traineddata`, `chi_tra.traineddata` và `eng.traineddata` trong `public/tessdata`.
 - Tesseract trả văn bản, confidence, từng dòng và bounding box.
 - Sau khi OCR xong, chỉ phần text được gửi đến endpoint Gemini để dịch.
 

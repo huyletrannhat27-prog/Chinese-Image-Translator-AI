@@ -34,7 +34,7 @@
 | **Framework** | Next.js 14 (App Router) | Web app, API routes |
 | **Ngôn ngữ** | TypeScript | Type-safe |
 | **UI** | Tailwind CSS + Radix UI | Giao diện responsive |
-| **OCR** | Tesseract.js + `chi_sim`/`chi_tra` | Nhận dạng chữ Trung, confidence và bbox |
+| **OCR** | Tesseract.js + `chi_sim`/`chi_tra`/`eng` | Nhận dạng chữ Trung/Latin, confidence và bbox |
 | **Dịch thuật** | Google Gemini API (`gemini-3.5-flash`) | Dịch text OCR Trung → Việt, trả JSON/segments |
 | **Tiền xử lý ảnh** | Sharp | Xoay ảnh theo EXIF, resize và tối ưu payload |
 | **Lịch sử** | localStorage (client) | Không cần database |
