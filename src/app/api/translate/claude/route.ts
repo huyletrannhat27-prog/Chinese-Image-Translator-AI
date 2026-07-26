@@ -9,6 +9,27 @@ import {
 // Tăng timeout
 export const maxDuration = 60;
 
+class ClaudeRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code?: string
+  ) {
+    super(message);
+  }
+}
+
+function claudeErrorMessage(status: number, code?: string, message?: string) {
+  const normalizedMessage = message?.toLowerCase() || '';
+  if (normalizedMessage.includes('credit balance is too low')) {
+    return 'Tài khoản Anthropic Claude không đủ credit. Hãy nạp credit trong Plans & Billing rồi thử lại.';
+  }
+  if (status === 401) return 'ANTHROPIC_API_KEY/CLAUDE_API_KEY không hợp lệ hoặc đã bị thu hồi.';
+  if (status === 429) return 'Claude đang giới hạn tần suất yêu cầu. Vui lòng thử lại sau ít phút.';
+  if (status === 403) return 'API key Claude không có quyền dùng model đã chọn.';
+  return message || `Claude API trả về lỗi ${status}${code ? ` (${code})` : ''}`;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { text, target, image } = await readVisionInput(req);
@@ -62,7 +83,12 @@ export async function POST(req: NextRequest) {
 
     const data = await response.json();
     if (!response.ok) {
-      throw new Error(data?.error?.message || `Claude API error: ${response.status}`);
+      const code = typeof data?.error?.type === 'string' ? data.error.type : undefined;
+      throw new ClaudeRequestError(
+        claudeErrorMessage(response.status, code, data?.error?.message),
+        response.status,
+        code
+      );
     }
 
     const outputText = data.content
@@ -74,6 +100,12 @@ export async function POST(req: NextRequest) {
 
   } catch (error) {
     console.error('Claude Translation Error:', error);
+    if (error instanceof ClaudeRequestError) {
+      return NextResponse.json(
+        { error: error.message, code: error.code || 'CLAUDE_API_ERROR' },
+        { status: error.status }
+      );
+    }
     return NextResponse.json(
       { error: `Claude OCR/dịch thất bại: ${error instanceof Error ? error.message : 'Unknown error'}` },
       { status: 500 }

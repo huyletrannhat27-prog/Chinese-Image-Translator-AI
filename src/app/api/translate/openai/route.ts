@@ -9,6 +9,26 @@ import {
 // Tăng timeout
 export const maxDuration = 60;
 
+class OpenAIRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code?: string
+  ) {
+    super(message);
+  }
+}
+
+function openAIErrorMessage(status: number, code?: string, message?: string) {
+  if (status === 429 && code === 'insufficient_quota') {
+    return 'Tài khoản OpenAI đã hết quota. Hãy nạp credit/bật Billing cho API key rồi thử lại.';
+  }
+  if (status === 401) return 'OPENAI_API_KEY không hợp lệ hoặc đã bị thu hồi.';
+  if (status === 429) return 'OpenAI đang giới hạn tần suất yêu cầu. Vui lòng thử lại sau ít phút.';
+  if (status === 403) return 'API key OpenAI không có quyền dùng model đã chọn.';
+  return message || `OpenAI API trả về lỗi ${status}`;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { text, target, image } = await readVisionInput(req);
@@ -54,7 +74,12 @@ export async function POST(req: NextRequest) {
 
     const data = await response.json();
     if (!response.ok) {
-      throw new Error(data?.error?.message || `OpenAI API error: ${response.status}`);
+      const code = typeof data?.error?.code === 'string' ? data.error.code : undefined;
+      throw new OpenAIRequestError(
+        openAIErrorMessage(response.status, code, data?.error?.message),
+        response.status,
+        code
+      );
     }
 
     const outputText = data.output_text || data.output
@@ -64,6 +89,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(createVisionResponse(parsed, 'openai'));
   } catch (error) {
     console.error('OpenAI Translation Error:', error);
+    if (error instanceof OpenAIRequestError) {
+      return NextResponse.json(
+        { error: error.message, code: error.code || 'OPENAI_API_ERROR' },
+        { status: error.status }
+      );
+    }
     return NextResponse.json(
       { error: `OpenAI OCR/dịch thất bại: ${error instanceof Error ? error.message : 'Unknown error'}` },
       { status: 500 }
