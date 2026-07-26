@@ -4,13 +4,13 @@
 
 ## 1. Dự án đang dùng công cụ dịch nào?
 
-Dự án cho phép chọn ba AI đa phương thức:
+Dự án hiện tại dùng **Google Gemini API**, model mặc định `gemini-3.5-flash`, để dịch text Trung đã được Tesseract.js nhận dạng:
 
-1. **Google Gemini 3.5 Flash** – lựa chọn mặc định.
-2. **OpenAI** – model đọc từ `OPENAI_MODEL`, mặc định trong code là `gpt-5.6-terra`.
-3. **Anthropic Claude** – model đọc từ `CLAUDE_MODEL`, mặc định trong code là `claude-haiku-4-5-20251001`.
+```text
+Ảnh → Tesseract.js OCR → text/bbox → Gemini API → bản dịch tiếng Việt
+```
 
-Ảnh được đưa thẳng vào model. Model thực hiện **OCR + dịch Trung–Việt + tạo vùng overlay trong cùng một request**. Dự án chưa dùng Google Cloud Translation, Azure Translator, DeepL, Argos hay LibreTranslate trong luồng hiện tại.
+Gemini không còn nhận ảnh để làm OCR trong luồng chính. API nhận text OCR và danh sách dòng, sau đó trả bản dịch hoàn chỉnh, segments và `translatedLines` để overlay đúng vùng chữ. Dự án chưa dùng Google Cloud Translation, Azure Translator, DeepL, Argos hay LibreTranslate trong luồng hiện tại.
 
 ## 2. Dịch máy chuyên dụng trên cloud
 
@@ -77,4 +77,3 @@ Không khuyến nghị reverse-engineer endpoint web hoặc dùng package “Goo
 - [ML Kit](https://developers.google.com/ml-kit)
 - [Gemini API image understanding](https://ai.google.dev/gemini-api/docs/image-understanding)
 - [OpenAI API models](https://developers.openai.com/api/docs/models)
-

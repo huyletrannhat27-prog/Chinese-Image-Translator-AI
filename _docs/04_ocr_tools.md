@@ -4,14 +4,13 @@
 
 ## 1. Dự án đang dùng OCR nào?
 
-Dự án hiện tại **không dùng Tesseract, PaddleOCR hay Google Cloud Vision OCR**. Ảnh được gửi thẳng tới một AI Vision để AI vừa nhận dạng chữ, vừa dịch và trả vùng chữ:
+Dự án hiện tại dùng **Tesseract.js** chạy phía client để nhận dạng chữ Trung trước khi dịch:
 
-- Mặc định: **Google Gemini 3.5 Flash**.
-- Có thể chọn: **OpenAI Vision** hoặc **Anthropic Claude Vision**.
-- AI trả `correctedText`, bản dịch, loại chữ giản thể/phồn thể, confidence và tối đa 8 vùng `bbox`.
-- Đây là **OCR bằng LLM đa phương thức**, không phải OCR chuyên dụng.
+- Language data: `chi_sim.traineddata` và `chi_tra.traineddata` trong `public/tessdata`.
+- Tesseract trả văn bản, confidence, từng dòng và bounding box.
+- Sau khi OCR xong, chỉ phần text được gửi đến endpoint Gemini để dịch.
 
-Ưu điểm là hiểu ngữ cảnh và xử lý OCR + dịch trong một request. Nhược điểm là độ trễ cloud cao hơn OCR on-device, kết quả không hoàn toàn tất định và tọa độ vùng chữ có thể kém ổn định hơn engine OCR chuyên dụng.
+Như vậy pipeline hiện tại là **Tesseract OCR → Gemini API translation**, không gửi ảnh cho Gemini để OCR.
 
 ## 2. OCR mã nguồn mở và offline
 
@@ -76,4 +75,3 @@ Giữ **Gemini/OpenAI/Claude Vision**, nhưng đây nên là chế độ “ch�
 - [Google Cloud Vision pricing](https://cloud.google.com/vision/pricing)
 - [Azure Vision OCR language support](https://learn.microsoft.com/azure/ai-services/computer-vision/language-support)
 - [OCR.space API](https://ocr.space/ocrapi)
-

@@ -46,6 +46,7 @@ yarn-error.log*
 
 # Tesseract language data (auto-downloaded on first OCR run)
 *.traineddata
+!public/tessdata/*.traineddata
 
 # TypeScript build cache
 *.tsbuildinfo

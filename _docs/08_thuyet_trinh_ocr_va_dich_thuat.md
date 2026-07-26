@@ -10,9 +10,7 @@
 1. **OCR (Optical Character Recognition):** biến chữ trong ảnh thành văn bản máy có thể xử lý.
 2. **Dịch thuật:** chuyển văn bản tiếng Trung đã nhận dạng sang tiếng Việt, giữ ngữ cảnh và hiển thị kết quả cho người dùng.
 
-Trong phiên bản hiện tại của repository, ảnh được gửi đến **Gemini Vision (mặc định), OpenAI Vision hoặc Claude Vision**. Model thực hiện OCR, nhận diện giản thể/phồn thể, dịch và trả các vùng chữ trong cùng một request. Vì vậy, về mặt kỹ thuật hiện tại đây là **OCR bằng AI Vision đa phương thức**, chưa phải Tesseract.
-
-Nếu bài thuyết trình của nhóm dùng một nhánh triển khai Tesseract, hãy dùng phần “Kịch bản chọn Tesseract” bên dưới và nói rõ đó là kiến trúc OCR tách rời (OCR trước, dịch sau).
+Trong phiên bản hiện tại, **Tesseract.js** nhận dạng chữ Trung trước, sau đó **Gemini API** dịch phần text OCR sang tiếng Việt. Đây là kiến trúc tách rời: OCR chuyên dụng → dịch bằng LLM.
 
 ## 2. OCR là gì và app sử dụng OCR ở đâu?
 
@@ -87,13 +85,7 @@ Với web/PWA có thể dùng Tesseract.js trong Web Worker. Với mobile, nên 
 
 ## 7. App hiện đang dùng công cụ dịch nào?
 
-Giao diện cho phép chọn:
-
-- **Gemini 3.5 Flash:** mặc định; nhận ảnh và trả OCR + dịch + vùng chữ.
-- **OpenAI Vision:** provider thay thế, model lấy từ `OPENAI_MODEL`.
-- **Claude Vision:** provider thay thế, model lấy từ `CLAUDE_MODEL`.
-
-Lý do dùng LLM Vision ở phiên bản hiện tại là pipeline ngắn: một request có thể đọc chữ, hiểu ngữ cảnh câu tiếng Trung, dịch sang tiếng Việt và trả JSON để vẽ overlay. Nhược điểm là phụ thuộc Internet/API key, chi phí token và kết quả cần validation.
+Ứng dụng dùng **Gemini API (`gemini-3.5-flash`)**. Gemini nhận text và danh sách dòng do Tesseract.js trả về, rồi trả bản dịch hoàn chỉnh, segments và `translatedLines` để ghép lại với bbox OCR. Nhược điểm là vẫn phụ thuộc Internet/API key và chi phí token.
 
 ## 8. Vì sao không dùng Google Translate/DeepL cho ảnh trực tiếp?
 
@@ -125,7 +117,7 @@ Cách tách này thường nhanh, rẻ và dễ kiểm soát hơn khi đã có t
 
 ## 10. Kết luận nói trong 30 giây
 
-> “OCR và dịch là hai bước khác nhau. Tesseract phù hợp khi cần offline, riêng tư, miễn phí và kết quả ổn định trên ảnh chữ in rõ; nhược điểm là phải tiền xử lý và không mạnh ở bố cục phức tạp. Ứng dụng hiện tại dùng Gemini/OpenAI/Claude Vision để rút gọn pipeline OCR + dịch trong một request, phù hợp prototype chụp ảnh nhưng phụ thuộc cloud. Nếu phát triển camera realtime hoặc bản offline, nhóm sẽ tách OCR on-device khỏi bộ dịch và chỉ dịch phần text đã ổn định.”
+> “OCR và dịch là hai bước khác nhau. Ứng dụng dùng Tesseract.js để nhận dạng chữ Trung vì dễ kiểm soát, có model `chi_sim`/`chi_tra` và trả được confidence cùng bounding box. Sau đó Gemini API dịch text OCR sang tiếng Việt và trả kết quả theo từng dòng để overlay. Cách này giữ OCR tách biệt với dịch, nhưng phần dịch vẫn cần Internet và API key.”
 
 ## 11. Câu hỏi thường gặp
 
@@ -150,4 +142,3 @@ Cách tách này thường nhanh, rẻ và dễ kiểm soát hơn khi đã có t
 - [DeepL API](https://developers.deepl.com/docs)
 - [Argos Translate](https://www.argosopentech.com/)
 - [Gemini image understanding](https://ai.google.dev/gemini-api/docs/image-understanding)
-
