@@ -28,10 +28,10 @@ Thông số hiện tại:
 
 ### OCR và dịch
 
-- Provider mặc định: **Google Gemini 3.5 Flash**.
-- Có thể chọn OpenAI hoặc Claude.
-- Ảnh được upload lên cloud để **OCR + dịch + tìm bounding box trong một request**.
-- Gemini hiện nhận ảnh camera gần như nguyên bản; nhánh OpenAI/Claude có Sharp xoay, resize tối đa 2560 và JPEG quality 90 trên server trước khi gọi AI.
+- OCR: **PaddleOCR 3.x** trong Python service.
+- Dịch: **Google Gemini 3.5 Flash**; giao diện không còn chọn OpenAI/Claude.
+- Ảnh đi qua Sharp để xoay, resize tối đa 2560 px và nén JPEG trước khi gửi PaddleOCR.
+- Gemini chỉ nhận text và danh sách dòng OCR; không nhận ảnh.
 
 ### Kết luận
 
@@ -46,10 +46,11 @@ Tính năng hiện tại là **“mở camera → bấm chụp → chờ dịch 
 | Mã hóa ảnh | JPEG quality 0.95, full resolution | Trung bình | Ảnh lớn, encode trên main thread |
 | Upload | `multipart/form-data` lên Next.js | Trung bình/cao | Phụ thuộc kích thước ảnh, mạng 4G/Wi-Fi và vị trí server |
 | Xử lý server | Đọc multipart/base64; một số provider chạy Sharp | Thấp/trung bình | Parse file, rotate, resize, encode lại |
-| Cloud AI Vision | OCR + dịch + bbox + JSON, tối đa 6144 output token | **Cao nhất** | Model phải đọc ảnh, suy luận, dịch và sinh nhiều trường |
+| PaddleOCR service | Detect + recognize + bbox | **Cao** | Inference CPU/GPU; lần đầu khởi động phải tải/nạp model |
+| Gemini | Dịch text + JSON | Trung bình/cao | Phụ thuộc mạng, quota và độ dài text OCR |
 | Render kết quả | Đọc kích thước ảnh và dựng overlay | Thấp | Chỉ diễn ra sau khi API trả kết quả |
 
-Điểm nghẽn chính là **ảnh lớn + upload + cloud AI Vision**. Tối ưu nút chụp hoặc CSS gần như không làm thời gian chờ AI giảm đáng kể.
+Điểm nghẽn chính là **upload ảnh + PaddleOCR inference + Gemini API**. Tối ưu nút chụp hoặc CSS gần như không làm thời gian xử lý model giảm đáng kể.
 
 ## 3. Công cụ lấy hình từ camera
 
@@ -68,7 +69,7 @@ Tính năng hiện tại là **“mở camera → bấm chụp → chờ dịch 
 | **Canvas API** | Crop ROI, resize và JPEG/WebP ngay trong browser; tương thích tốt | Chạy trên main thread nếu dùng canvas thường; dễ gây giật khi xử lý liên tục | Ảnh tĩnh hoặc frame tần suất thấp |
 | **OffscreenCanvas + Web Worker** | Đưa resize/crop/encode khỏi main thread; UI camera mượt hơn; `convertToBlob` thuận tiện | Cần code worker và fallback; không làm giảm thời gian cloud AI; hỗ trợ có khác biệt ở WebView cũ | Web realtime hoặc auto-capture |
 | **`createImageBitmap`** | Decode/resize/crop hiệu quả; truyền ImageBitmap sang Worker | Cần quản lý bộ nhớ/`close()`; pipeline phức tạp hơn Canvas đơn giản | Tối ưu frame trước OCR/nén |
-| **Sharp trên Next.js server** | Rotate EXIF, resize và nén chất lượng cao; giảm payload gửi tiếp tới AI | Ảnh đã phải upload tới server; encode thêm một lần; tăng CPU server | Chuẩn hóa upload trước cloud AI; project dùng ở OpenAI/Claude |
+| **Sharp trên Next.js server** | Rotate EXIF, resize và nén chất lượng cao; chuẩn hóa ảnh cho OCR | Ảnh đã phải upload tới server; encode thêm một lần; tăng CPU server | Dự án dùng trước khi gọi PaddleOCR |
 | **OpenCV.js** | Deskew, threshold, perspective correction, crop và phát hiện vùng chữ trong browser | WASM lớn, CPU cao, khó tối ưu trên mobile; không tự OCR | Tiền xử lý ảnh tài liệu/biển hiệu khó |
 
 ## 5. Công cụ OCR realtime từ video
@@ -80,7 +81,7 @@ Tính năng hiện tại là **“mở camera → bấm chụp → chờ dịch 
 | **PaddleOCR mobile/ONNX** | Self-host/on-device; mạnh với chữ Trung; tùy biến được | Tích hợp mobile và tối ưu model phức tạp; app/model nặng; cần CPU/GPU/NPU phù hợp | Cần offline, kiểm soát model |
 | **Tesseract.js Worker** | Chạy trực tiếp trong browser, không gửi ảnh | Khởi tạo/tải language data chậm; CPU cao; khó OCR tiếng Trung ở tốc độ video | PWA offline, xử lý 1–2 frame/giây hoặc thấp hơn |
 | **Cloud Vision OCR** | Độ chính xác tốt, API ổn định | Mỗi frame là request/upload/chi phí; không phù hợp gửi 15–30 FPS | Auto-capture thưa, ảnh được chọn lọc |
-| **Gemini/OpenAI/Claude Vision** | OCR và dịch theo ngữ cảnh; xử lý ảnh khó | Độ trễ cao, tính token, không tất định; gọi mỗi frame cực tốn và dễ rate-limit | “Chụp rồi dịch” hoặc gọi khi nội dung đã ổn định; **dự án đang dùng kiểu này** |
+| **Gemini/OpenAI/Claude Vision** | OCR và dịch theo ngữ cảnh; xử lý ảnh khó | Độ trễ cao, tính token, không tất định; gọi mỗi frame cực tốn và dễ rate-limit | Chỉ là phương án so sánh/fallback; không thuộc pipeline hiện tại |
 
 ## 6. Công cụ hỗ trợ realtime khác
 
@@ -104,7 +105,8 @@ getUserMedia
 → Canvas crop/resize còn khoảng 1280 px
 → JPEG/WebP quality 0.75–0.85
 → upload
-→ Gemini Flash OCR + dịch
+→ PaddleOCR
+→ Gemini Flash dịch text
 ```
 
 Ưu điểm:
@@ -176,7 +178,7 @@ Nhược điểm:
 
 | Mục tiêu | Công cụ nên chọn |
 |---|---|
-| Giữ web hiện tại, cải thiện nhanh | `getUserMedia` + Canvas resize/crop + Gemini Flash |
+| Giữ web hiện tại, cải thiện nhanh | `getUserMedia` + Canvas resize/crop + PaddleOCR + Gemini Flash |
 | Web/PWA auto-scan | `getUserMedia` + OffscreenCanvas Worker + OCR local/throttle + Translation API |
 | APK realtime tốt nhất | CameraX/preview plugin + ML Kit Text Recognition + ML Kit/Cloud Translation |
 | Chất lượng ảnh khó | Chụp một frame tốt rồi dùng Gemini/OpenAI/Claude Vision |
@@ -193,4 +195,3 @@ Nhược điểm:
 - [ML Kit Android text recognition](https://developers.google.com/ml-kit/vision/text-recognition/v2/android)
 - [MediaPipe Tasks](https://developers.google.com/edge/mediapipe/solutions/tasks)
 - [Tesseract.js](https://tesseract.projectnaptha.com/)
-

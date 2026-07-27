@@ -4,13 +4,14 @@
 
 ## 1. Dự án đang dùng OCR nào?
 
-Dự án hiện tại dùng **Tesseract.js** chạy phía client để nhận dạng chữ Trung trước khi dịch:
+Dự án hiện tại dùng **PaddleOCR 3.x** trong một Python service để nhận dạng chữ Trung:
 
-- Language data: `chi_sim.traineddata`, `chi_tra.traineddata` và `eng.traineddata` trong `public/tessdata`.
-- Tesseract trả văn bản, confidence, từng dòng và bounding box.
+- Next.js xoay ảnh theo EXIF, resize cạnh dài tối đa 2560 px và chuyển sang JPEG.
+- PaddleOCR nạp model ngôn ngữ `ch` một lần khi service khởi động.
+- Service trả văn bản, confidence, từng dòng và bounding box chuẩn hóa theo thang 0–1000.
 - Sau khi OCR xong, chỉ phần text được gửi đến endpoint Gemini để dịch.
 
-Như vậy pipeline hiện tại là **Tesseract OCR → Gemini API translation**, không gửi ảnh cho Gemini để OCR.
+Như vậy pipeline hiện tại là **PaddleOCR → Gemini API translation**, không gửi ảnh cho Gemini để OCR.
 
 ## 2. OCR mã nguồn mở và offline
 
@@ -41,7 +42,7 @@ Như vậy pipeline hiện tại là **Tesseract OCR → Gemini API translation*
 
 | Công cụ | Ưu điểm | Nhược điểm | Nên dùng khi |
 |---|---|---|---|
-| **Google Gemini Vision** | Hiểu ảnh, chữ và ngữ cảnh; có thể OCR + dịch + JSON trong một request; phù hợp screenshot/hội thoại | Cần mạng; tính token; có thể bỏ sót hoặc đoán chữ; bbox không hoàn toàn ổn định | Muốn pipeline gọn, bản dịch cần ngữ cảnh; **đây là mặc định hiện tại** |
+| **Google Gemini Vision** | Hiểu ảnh, chữ và ngữ cảnh; có thể OCR + dịch + JSON trong một request; phù hợp screenshot/hội thoại | Cần mạng; tính token; có thể bỏ sót hoặc đoán chữ; bbox không hoàn toàn ổn định | Muốn pipeline gọn, bản dịch cần ngữ cảnh; dự án đã đánh giá nhưng không dùng cho OCR |
 | **OpenAI Vision** | Hiểu bố cục/ngữ cảnh, output có cấu trúc; xử lý ảnh trực tiếp | Cần mạng; image detail cao làm tăng độ trễ/chi phí; không phải OCR tất định | Ảnh khó, cần OCR + dịch và JSON |
 | **Anthropic Claude Vision** | Hiểu tài liệu/ảnh và dịch theo ngữ cảnh; prompt linh hoạt | Cần mạng; độ trễ/chi phí theo model; bbox và OCR không tất định | Provider dự phòng hoặc so sánh chất lượng |
 
@@ -55,13 +56,13 @@ Như vậy pipeline hiện tại là **Tesseract OCR → Gemini API translation*
 
 Thử **Tesseract.js trong Web Worker**, nhưng chỉ OCR vùng quan tâm và throttle frame. Cần benchmark kỹ tiếng Trung trên điện thoại yếu.
 
-### Muốn giữ chất lượng/ngữ cảnh như hiện tại
+### Muốn dùng LLM Vision cho ảnh khó
 
-Giữ **Gemini/OpenAI/Claude Vision**, nhưng đây nên là chế độ “chụp rồi dịch”, không gọi cloud AI liên tục 15–30 frame/giây.
+Có thể đánh giá **Gemini/OpenAI/Claude Vision** như một chế độ fallback, nhưng không thuộc pipeline hiện tại và không nên gọi cloud AI liên tục 15–30 frame/giây.
 
-### Muốn self-host
+### Lựa chọn của dự án
 
-Ưu tiên **PaddleOCR** cho Trung–Việt. Tesseract phù hợp hơn với tài liệu sạch và yêu cầu tài nguyên thấp.
+Dự án dùng **PaddleOCR self-host** cho chữ Trung. Tesseract phù hợp hơn với tài liệu sạch và yêu cầu tài nguyên thấp, nhưng không còn nằm trong mã nguồn chạy chính.
 
 ## 7. Nguồn tham khảo
 

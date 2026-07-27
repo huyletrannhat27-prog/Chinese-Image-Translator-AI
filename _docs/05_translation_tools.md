@@ -4,13 +4,13 @@
 
 ## 1. Dự án đang dùng công cụ dịch nào?
 
-Dự án hiện tại dùng **Google Gemini API**, model mặc định `gemini-3.5-flash`, để dịch text Trung đã được Tesseract.js nhận dạng:
+Dự án hiện tại dùng **Google Gemini API**, model mặc định `gemini-3.5-flash`, để dịch text Trung đã được PaddleOCR nhận dạng:
 
 ```text
-Ảnh → Tesseract.js OCR → text/bbox → Gemini API → bản dịch tiếng Việt
+Ảnh → PaddleOCR → text/bbox → Gemini API → bản dịch tiếng Việt
 ```
 
-Gemini không còn nhận ảnh để làm OCR trong luồng chính. API nhận text OCR và danh sách dòng, sau đó trả bản dịch hoàn chỉnh, segments và `translatedLines` để overlay đúng vùng chữ. Dự án chưa dùng Google Cloud Translation, Azure Translator, DeepL, Argos hay LibreTranslate trong luồng hiện tại.
+Gemini không nhận ảnh để làm OCR trong luồng chính. API nhận text OCR và danh sách dòng, sau đó trả bản dịch hoàn chỉnh, segments và `translatedLines` để overlay đúng vùng chữ. Dự án chưa dùng Google Cloud Translation, Azure Translator, DeepL, Argos hay LibreTranslate trong luồng hiện tại.
 
 ## 2. Dịch máy chuyên dụng trên cloud
 
@@ -32,7 +32,7 @@ Gemini không còn nhận ảnh để làm OCR trong luồng chính. API nhận 
 
 | Công cụ | Ưu điểm | Nhược điểm | Nên dùng khi |
 |---|---|---|---|
-| **Google Gemini API** | Nhận ảnh trực tiếp; hiểu ngữ cảnh, tiếng lóng, tone; OCR + dịch một request; JSON schema | Không hoàn toàn tất định; có thể diễn giải/bỏ sót; ảnh và output dài làm tăng token/độ trễ | Ảnh hội thoại/screenshot; **mặc định hiện tại** |
+| **Google Gemini API** | Hiểu ngữ cảnh, tiếng lóng, tone; JSON schema; dịch text sau OCR | Cần mạng; output không hoàn toàn tất định; text dài làm tăng token/độ trễ | **Dự án đang dùng để dịch text PaddleOCR** |
 | **OpenAI API** | Multilingual/vision; hiểu bố cục; dịch tự nhiên; output có cấu trúc | Cần mạng; tính token/image detail; có thể hallucinate; thường tốn hơn NMT ở volume lớn | Ảnh khó, cần reasoning và JSON |
 | **Anthropic Claude API** | Hiểu ngữ cảnh/tài liệu; prompt linh hoạt; có thể nhận ảnh | Cần mạng; độ trễ/giá tùy model; không phải translation engine tất định | Provider thay thế hoặc so sánh chất lượng |
 
@@ -59,7 +59,7 @@ Dùng ML Kit Translation trên mobile hoặc Argos Translate ở desktop/server 
 
 ### Ưu tiên chất lượng theo ngữ cảnh
 
-Giữ Gemini/OpenAI/Claude, nhưng chỉ gọi sau khi người dùng bấm chụp hoặc sau khi OCR phát hiện nội dung đã ổn định. Không gọi một LLM Vision mới cho mọi frame camera.
+Chỉ gọi Gemini sau khi PaddleOCR đã trả text từ ảnh người dùng chụp/upload. Không gọi dịch lặp cho mọi frame camera.
 
 ## 7. Cảnh báo về Google Translate không chính thức
 

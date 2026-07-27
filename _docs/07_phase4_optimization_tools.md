@@ -4,7 +4,7 @@
 
 ## 1. Phase 4 dùng để làm gì?
 
-Ứng dụng đang gọi Gemini, OpenAI hoặc Claude bằng API key của chủ dự án. Mỗi lần người dùng chụp/upload ảnh có thể phát sinh:
+Ứng dụng đang gọi PaddleOCR service và Gemini bằng API key của chủ dự án. Mỗi lần người dùng chụp/upload ảnh có thể phát sinh:
 
 - Chi phí xử lý ảnh và token.
 - Thời gian chờ cloud AI.
@@ -34,14 +34,14 @@ Ba cơ chế bổ trợ nhau nhưng không thay thế nhau. Cache không ngăn s
 
 | Hạng mục | Trạng thái | Bằng chứng trong source |
 |---|---|---|
-| Rate limiting inbound | **Chưa có** | Ba route `/api/translate*` chưa kiểm tra quota theo IP/user |
+| Rate limiting inbound | **Chưa có** | `/api/ocr` và `/api/translate` chưa kiểm tra quota theo IP/user |
 | Cache kết quả OCR/dịch | **Chưa có** | Không có Redis/KV/cache key trong API route |
 | Lịch sử trên trình duyệt | **Đã có nhưng không phải API cache** | `HistoryStorage` lưu kết quả vào `localStorage` của từng thiết bị |
 | Retry helper | **Có code nhưng chưa dùng** | `src/utils/helpers.ts` có `retry()` với exponential backoff |
 | Retry provider thực tế | **Chưa có** | Các route chỉ gọi `fetch`/SDK một lần |
-| Phân loại một số lỗi API | **Có một phần** | OpenAI/Claude đã nhận diện 401, 403, 429 và quota/credit |
-| Timeout/cancel provider | **Chưa có** | Chưa truyền `AbortSignal` hoặc timeout cho các request cloud |
-| Tiền xử lý ảnh | **Đã có một phần** | Sharp dùng cho luồng OpenAI/Claude; Gemini vẫn có luồng xử lý riêng |
+| Phân loại một số lỗi API | **Có một phần** | Route Gemini phân loại key/quyền, model, rate limit và timeout |
+| Timeout/cancel provider | **Đã có** | PaddleOCR timeout 110 giây; Gemini SDK timeout 55 giây |
+| Tiền xử lý ảnh | **Đã có** | Sharp xoay EXIF, resize và nén JPEG trước PaddleOCR |
 
 Vì vậy dấu `⬜`/`[ ]` ở Phase 4 là đúng: dự án mới có một số nền tảng, chưa có cơ chế tối ưu hoàn chỉnh.
 
@@ -359,4 +359,3 @@ Thứ tự triển khai:
 - [Upstash QStash queues](https://upstash.com/docs/qstash/features/queues)
 - [Upstash QStash flow control](https://upstash.com/docs/qstash/features/flowcontrol)
 - [Sentry Next.js SDK](https://www.npmjs.com/package/@sentry/nextjs)
-

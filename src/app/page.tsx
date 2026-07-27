@@ -17,9 +17,8 @@ import {
   Check,
   Smartphone,
 } from 'lucide-react';
-import { TranslationResult } from '@/types';
+import { OCRRegion, TranslationResult } from '@/types';
 import { HistoryStorage } from '@/lib/history/storage';
-import { recognizeChinese } from '@/lib/ocr/tesseract';
 
 async function getImageDimensions(file: File): Promise<{ width: number; height: number }> {
   if ('createImageBitmap' in window) {
@@ -296,46 +295,52 @@ export default function Home() {
     const startedAt = Date.now();
 
     try {
-      setProgress(15);
-      const ocrResult = await recognizeChinese(file, (ocrProgress) => {
-        setProgress(15 + Math.round(ocrProgress * 0.45));
+      const ocrFormData = new FormData();
+      ocrFormData.append('image', file);
+      setProgress(20);
+      const ocrResponse = await fetch('/api/ocr', {
+        method: 'POST',
+        body: ocrFormData,
       });
-      if (!ocrResult.text.trim()) {
-        throw new Error('Tesseract không nhận diện được chữ trong ảnh');
+      if (!ocrResponse.ok) {
+        const errorData = await ocrResponse.json();
+        throw new Error(errorData.error || 'PaddleOCR xử lý ảnh thất bại');
       }
+      const ocrData = await ocrResponse.json();
+      const ocrLines = Array.isArray(ocrData.regions)
+        ? ocrData.regions.map((region: { text: string }) => region.text)
+        : [];
 
-      const translationFormData = new FormData();
-      translationFormData.append('image', file);
-      translationFormData.append('text', ocrResult.text);
-      translationFormData.append('lines', JSON.stringify(ocrResult.regions?.map((region) => region.text) || []));
-      translationFormData.append('target', 'vi');
-      translationFormData.append('source', 'zh');
-
-      setProgress(65);
+      setProgress(60);
       const translateResponse = await fetch('/api/translate', {
         method: 'POST',
-        body: translationFormData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: ocrData.text,
+          lines: ocrLines,
+          target: 'vi',
+        }),
       });
 
       if (!translateResponse.ok) {
         const errorData = await translateResponse.json();
-        throw new Error(errorData.error || 'Translation failed');
+        throw new Error(errorData.error || 'Gemini dịch văn bản thất bại');
       }
 
       const translateData = await translateResponse.json();
       setProgress(85);
       const imageDimensions = await getImageDimensions(file);
-      const visionRegions = Array.isArray(translateData.overlayRegions)
-        ? translateData.overlayRegions.map((region: {
-            original: string;
-            translated: string;
+      const paddleRegions: OCRRegion[] | undefined = Array.isArray(ocrData.regions)
+        ? ocrData.regions.map((region: {
+            text: string;
+            confidence: number;
             orientation?: 'horizontal' | 'vertical';
             bbox: { x0: number; y0: number; x1: number; y1: number };
           }) => ({
-            text: region.original,
-            confidence: translateData.confidence || ocrResult.confidence,
+            text: region.text,
+            confidence: region.confidence,
             orientation: region.orientation || 'horizontal',
-            lineCount: Math.max(1, region.original.split(/\r?\n/).length),
+            lineCount: Math.max(1, region.text.split(/\r?\n/).length),
             bbox: {
               x0: region.bbox.x0 * imageDimensions.width / 1000,
               y0: region.bbox.y0 * imageDimensions.height / 1000,
@@ -344,36 +349,21 @@ export default function Home() {
             },
           }))
         : undefined;
-      const ocrRegions = ocrResult.regions?.map((region) => ({
-        ...region,
-        bbox: {
-          x0: region.bbox.x0,
-          y0: region.bbox.y0,
-          x1: region.bbox.x1,
-          y1: region.bbox.y1,
-        },
-      }));
-      const translatedRegions = visionRegions?.map((region: { text: string }) => region.text)
-        ? Array.isArray(translateData.overlayRegions)
-          ? translateData.overlayRegions.map((region: { translated: string }) => region.translated)
-          : undefined
-        : ocrRegions?.map((_, index) =>
-        translateData.translatedLines?.[index]
-        || translateData.segments?.[index]?.translated
-        || (index === 0 ? translateData.translation : '')
+      const translatedRegions = paddleRegions?.map(
+        (_, index) => translateData.translatedLines?.[index] || ''
       );
 
       // Build result
       const resultData: TranslationResult = {
         id: `trans_${Date.now()}`,
-        originalText: translateData.correctedText || ocrResult.text,
+        originalText: ocrData.text,
         translation: translateData.translation,
-        detectedScript: translateData.detectedScript || ocrResult.detectedScript,
-        confidence: translateData.confidence || ocrResult.confidence,
-        segments: translateData.segments || [{ original: translateData.correctedText || ocrResult.text, translated: translateData.translation }],
+        detectedScript: translateData.detectedScript || 'mixed',
+        confidence: typeof ocrData.confidence === 'number' ? ocrData.confidence : 0,
+        segments: translateData.segments || [{ original: ocrData.text, translated: translateData.translation }],
         processingTime: Date.now() - startedAt,
         createdAt: new Date(),
-        regions: visionRegions || ocrRegions,
+        regions: paddleRegions,
         translatedRegions,
         imageWidth: imageDimensions.width,
         imageHeight: imageDimensions.height,
@@ -491,8 +481,8 @@ export default function Home() {
         <div className="mx-auto max-w-3xl space-y-4">
           <div className="surface-card flex flex-col gap-2 rounded-2xl px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="text-sm font-bold text-slate-900">Tesseract OCR + Gemini dịch thuật</p>
-              <p className="text-xs text-slate-500">Tesseract đọc chữ Trung, Gemini dịch sang tiếng Việt</p>
+              <p className="text-sm font-bold text-slate-900">PaddleOCR + Gemini dịch thuật</p>
+              <p className="text-xs text-slate-500">PaddleOCR đọc chữ trong ảnh, Gemini dịch văn bản sang tiếng Việt</p>
             </div>
             <span className="rounded-xl bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700">
               Gemini API
@@ -612,7 +602,11 @@ export default function Home() {
               </div>
               <div>
                 <p className="font-bold text-slate-900">
-                  {progress < 50 ? 'Đang đọc văn bản...' : progress < 80 ? 'AI đang dịch...' : 'Sắp hoàn tất...'}
+                  {progress < 55
+                    ? 'PaddleOCR đang đọc văn bản...'
+                    : progress < 85
+                      ? 'Gemini đang dịch văn bản...'
+                      : 'Sắp hoàn tất...'}
                 </p>
                 <p className="mt-0.5 text-sm text-slate-500">Vui lòng giữ ứng dụng đang mở · {Math.round(progress)}%</p>
               </div>

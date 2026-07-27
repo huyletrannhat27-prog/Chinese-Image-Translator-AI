@@ -1,5 +1,5 @@
-// Toạ độ 1 đoạn văn (paragraph, gộp nhiều dòng liền kề) trên ảnh, theo pixel
-// của ảnh đã tiền xử lý ở OCR - dùng để overlay bản dịch.
+// Toạ độ một vùng chữ do PaddleOCR phát hiện, quy đổi sang pixel ảnh gốc
+// để overlay bản dịch.
 export interface OCRRegion {
   text: string;
   confidence: number;
@@ -29,43 +29,6 @@ export interface TranslationResult {
   imageHeight?: number;
 }
 
-// OCR result type
-export interface OCRResult {
-  text: string;
-  confidence: number;
-  detectedScript: 'simplified' | 'traditional' | 'mixed';
-  language: string;
-  wordBoxes?: Array<{
-    text: string;
-    confidence: number;
-    bbox: { x0: number; y0: number; x1: number; y1: number };
-  }>;
-  regions?: OCRRegion[];
-  imageWidth?: number;
-  imageHeight?: number;
-}
-
-// Translation request type
-export interface TranslateRequest {
-  text: string;
-  target: string;
-  source?: string;
-  provider?: 'gemini';
-}
-
-// Translation response type
-export interface TranslateResponse {
-  translation: string;
-  detectedScript: 'simplified' | 'traditional' | 'mixed';
-  segments: Array<{
-    original: string;
-    translated: string;
-  }>;
-  confidence: number;
-  provider: string;
-  processingTime: number;
-}
-
 // History store type
 export interface HistoryStore {
   history: TranslationResult[];
@@ -79,7 +42,6 @@ export interface HistoryStore {
 export interface UserSettings {
   targetLanguage: 'vi' | 'en' | 'ja' | 'ko' | 'zh';
   sourceLanguage: 'zh' | 'ja' | 'ko' | 'en';
-  ocrLanguage: 'chi_sim' | 'chi_tra' | 'chi_sim+chi_tra';
   provider: 'gemini';
   autoProcess: boolean;
   saveHistory: boolean;

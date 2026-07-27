@@ -19,8 +19,9 @@
 
 **Mục tiêu:** Trích xuất văn bản tiếng Trung từ ảnh.
 
-- [x] Thay Tesseract bằng AI Vision OCR (Gemini / OpenAI / Claude)
-- [x] OCR và dịch trực tiếp từ ảnh trong một request
+- [x] Thay Tesseract.js bằng PaddleOCR 3.x chạy trong Python service
+- [x] Tách pipeline thành hai bước: PaddleOCR nhận ảnh, Gemini chỉ nhận text
+- [x] Trả confidence và bounding box theo từng dòng OCR
 - [x] Hiển thị kết quả OCR (văn bản thô)
 - [x] Xử lý trường hợp AI không nhận diện được (báo lỗi rõ ràng)
 - [x] Tiền xử lý ảnh trước OCR (Sharp: EXIF rotate, resize, JPEG optimize)
@@ -28,17 +29,15 @@
 
 ---
 
-## Phase 3 — Phát hiện ngôn ngữ & Dịch thuật 🔄
+## Phase 3 — Phát hiện ngôn ngữ & Dịch thuật ✅
 
 **Mục tiêu:** Nhận diện loại chữ (Giản thể / Phồn thể) và dịch sang tiếng Việt.
 
-- [x] Detect script: Giản thể (简体) vs Phồn thể (繁體) bằng AI Vision
+- [x] Detect script: Giản thể (简体), Phồn thể (繁體) hoặc hỗn hợp từ text OCR
 - [x] Hiển thị loại chữ đã phát hiện trên UI
 - [x] Integration Google Gemini: `/api/translate` (endpoint chính)
-- [x] Integration OpenAI Vision: `/api/translate/openai` (cần `OPENAI_API_KEY`)
-- [x] Integration Claude Vision: `/api/translate/claude` (cần `ANTHROPIC_API_KEY`)
 - [x] Hiển thị bản dịch + văn bản gốc + phân đoạn câu
-- [x] Cho phép user chọn provider ngay trên UI
+- [x] Ghép `translatedLines` của Gemini với bbox PaddleOCR để overlay
 - [ ] Cho phép user chọn ngôn ngữ đích khác tiếng Việt trên UI
 
 ---

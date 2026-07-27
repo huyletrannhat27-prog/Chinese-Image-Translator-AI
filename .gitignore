@@ -50,3 +50,7 @@ yarn-error.log*
 
 # TypeScript build cache
 *.tsbuildinfo
+
+# Python cache
+__pycache__/
+*.py[cod]

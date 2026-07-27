@@ -12,7 +12,8 @@ Xây dựng một ứng dụng web cho phép người dùng upload ảnh chứa 
 |---|---|---|
 | Framework | Next.js 14 | App Router, React Server Components |
 | UI | Tailwind CSS + Shadcn/ui | Giao diện hiện đại, responsive |
-| OCR + dịch | Gemini / OpenAI / Claude Vision | Chọn trực tiếp trên giao diện |
+| OCR | PaddleOCR 3.x (Python service) | Nhận ảnh, trả text/confidence/bbox |
+| Dịch | Google Gemini API | Chỉ nhận text OCR và dịch sang tiếng Việt |
 | Xử lý ảnh | Sharp | Xoay theo EXIF, resize, tối ưu trước khi gửi AI |
 | File upload | Next.js Route Handler (FormData) | Xử lý multipart/form-data |
 | Lịch sử | localStorage (client) | Xem `src/lib/history/storage.ts` |
@@ -50,9 +51,9 @@ Xây dựng một ứng dụng web cho phép người dùng upload ảnh chứa 
 
 1. **Chụp ảnh / Upload ảnh** — Camera trực tiếp hoặc chọn file từ máy
 2. **Xem trước ảnh** — Hiển thị ảnh sau khi chụp/upload
-3. **OCR + dịch** — AI Vision nhận diện chữ Hán và dịch trong một lần xử lý
-4. **Phát hiện ngôn ngữ** — Tự động nhận diện Giản thể / Phồn thể
-5. **Dịch văn bản** — Chọn Gemini, OpenAI hoặc Claude để dịch sang tiếng Việt
+3. **OCR** — PaddleOCR nhận diện chữ Hán, confidence và bounding box
+4. **Phát hiện loại chữ** — Gemini phân loại Giản thể / Phồn thể / hỗn hợp từ text OCR
+5. **Dịch văn bản** — Gemini dịch text PaddleOCR sang tiếng Việt
 6. **Copy kết quả** — Sao chép nội dung gốc và bản dịch
 7. **Lịch sử dịch** — Lưu, xem lại, xoá, export JSON
 

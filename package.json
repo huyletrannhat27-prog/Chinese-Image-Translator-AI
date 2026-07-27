@@ -11,6 +11,8 @@
     "start": "next start",
     "lint": "next lint",
     "type-check": "tsc --noEmit",
+    "ocr:install": "python -m pip install paddlepaddle==3.2.0 -i https://www.paddlepaddle.org.cn/packages/stable/cpu/ && python -m pip install -r paddle_ocr_service/requirements.txt",
+    "ocr:dev": "python -m uvicorn paddle_ocr_service.app:app --host 127.0.0.1 --port 8001",
     "android:sync": "cap sync android",
     "android:open": "cap open android",
     "android:apk": "cd android && gradlew.bat assembleDebug"
@@ -32,7 +34,6 @@
     "sharp": "^0.33.0",
     "tailwind-merge": "^2.0.0",
     "tailwindcss-animate": "^1.0.7",
-    "tesseract.js": "^7.0.0",
     "zustand": "^4.4.7"
   },
   "devDependencies": {
@@ -58,8 +59,7 @@
     "ai",
     "image-translator",
     "nextjs",
-    "tesseract",
-    "tesseract.js",
+    "paddleocr",
     "gemini"
   ],
   "repository": {

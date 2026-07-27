@@ -2,7 +2,7 @@
 
 [![Next.js](https://img.shields.io/badge/Next.js_14-000000?style=flat&logo=next.js&logoColor=white)](https://nextjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Tesseract OCR](https://img.shields.io/badge/OCR-Tesseract-4F46E5?style=flat)](#)
+[![PaddleOCR](https://img.shields.io/badge/OCR-PaddleOCR-4F46E5?style=flat)](https://www.paddleocr.ai/)
 [![Gemini](https://img.shields.io/badge/Gemini-8E75B2?style=flat&logo=google&logoColor=white)](https://deepmind.google/technologies/gemini/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
@@ -22,7 +22,7 @@
 
 ### ⚡ Điểm nổi bật
 - ✅ **Không cần đăng nhập** - Dùng ngay khi mở trang
-- ✅ **Dịch chính xác** - Tesseract OCR nhận dạng chữ, Gemini API dịch sang tiếng Việt
+- ✅ **Tách đúng hai nhiệm vụ** - PaddleOCR đọc chữ trong ảnh, Gemini dịch văn bản sang tiếng Việt
 - ✅ **Bảo mật** - Ảnh xử lý theo request, không lưu trữ vĩnh viễn trên server
 
 ---
@@ -34,8 +34,8 @@
 | **Framework** | Next.js 14 (App Router) | Web app, API routes |
 | **Ngôn ngữ** | TypeScript | Type-safe |
 | **UI** | Tailwind CSS + Radix UI | Giao diện responsive |
-| **OCR** | Tesseract.js + `chi_sim`/`chi_tra`/`eng` | Nhận dạng chữ Trung/Latin, confidence và bbox |
-| **Dịch thuật** | Google Gemini API (`gemini-3.5-flash`) | Dịch text OCR Trung → Việt, trả JSON/segments |
+| **OCR** | PaddleOCR 3.x (Python service) | Nhận dạng chữ Trung/Latin, confidence và bbox |
+| **Dịch thuật** | Google Gemini (`gemini-3.1-flash-lite`) | Dịch text PaddleOCR sang tiếng Việt và trả JSON/segments |
 | **Tiền xử lý ảnh** | Sharp | Xoay ảnh theo EXIF, resize và tối ưu payload |
 | **Lịch sử** | localStorage (client) | Không cần database |
 
@@ -48,9 +48,9 @@
       ↓
 🖼️ Tiền xử lý (Sharp: xoay đúng chiều, resize, nén ảnh)
       ↓
-🔎 Tesseract.js: OCR chữ Trung + confidence + bbox
+🔎 PaddleOCR service: nhận dạng chữ + confidence + bbox
       ↓
-🤖 Gemini API: dịch text OCR Trung → Việt
+🤖 Gemini API: dịch văn bản OCR Trung → Việt
       ↓
 📋 Lưu lịch sử (localStorage) + hiển thị kết quả
 ```
@@ -62,6 +62,7 @@
 ### Yêu cầu hệ thống
 - Node.js >= 18
 - npm (hoặc yarn/pnpm)
+- Python 3.10–3.12 cho PaddleOCR service, hoặc Docker
 
 ### Clone & Cài đặt
 
@@ -70,6 +71,27 @@ git clone https://github.com/huyletrannhat27-prog/Chinese-Image-Translator-AI.gi
 cd Chinese-Image-Translator-AI
 
 npm install
+```
+
+### Chạy PaddleOCR service
+
+Lần đầu cài dependency Python:
+
+```bash
+npm run ocr:install
+```
+
+Khởi động PaddleOCR ở terminal riêng:
+
+```bash
+npm run ocr:dev
+```
+
+Hoặc chạy bằng Docker:
+
+```bash
+docker build -f paddle_ocr_service/Dockerfile -t chinese-translator-ocr .
+docker run --rm -p 8001:8001 chinese-translator-ocr
 ```
 
 ### Cấu hình biến môi trường
@@ -81,15 +103,20 @@ cp .env.example .env
 ```
 
 ```env
-# Cấu hình ít nhất một provider mà bạn muốn dùng
+# URL PaddleOCR service
+PADDLE_OCR_URL=http://127.0.0.1:8001
+PADDLE_OCR_LANG=ch
+
+# Gemini chỉ dùng để dịch văn bản
 GEMINI_API_KEY=your_gemini_api_key
-OPENAI_API_KEY=your_openai_api_key
-OPENAI_MODEL=gpt-5.6-terra
-ANTHROPIC_API_KEY=your_anthropic_api_key
-CLAUDE_MODEL=claude-haiku-4-5-20251001
+GEMINI_MODEL=gemini-3.1-flash-lite
 ```
 
 Lấy Gemini API key miễn phí tại: https://aistudio.google.com/app/apikey
+
+`PADDLE_OCR_LANG=ch` dùng model tiếng Trung (nhận cả chữ Trung và Latin). Trong
+môi trường production, `PADDLE_OCR_URL` phải trỏ tới PaddleOCR service mà server
+Next.js có thể truy cập; không dùng `127.0.0.1` nếu hai service chạy ở hai máy/container khác nhau.
 
 ### Chạy dev server
 
@@ -117,7 +144,7 @@ npm run start
 
 1. **Mở trang** - Không cần đăng nhập, dùng ngay.
 2. **Chụp/Upload ảnh** - Nhấn "Mở Camera" để chụp, hoặc "Chọn ảnh từ máy".
-3. **Chọn AI và đợi xử lý** - Gemini, OpenAI hoặc Claude sẽ đọc ảnh rồi dịch trực tiếp.
+3. **Đợi xử lý** - PaddleOCR nhận dạng chữ trước, sau đó Gemini dịch văn bản sang tiếng Việt.
 4. **Xem kết quả** - Văn bản OCR, bản dịch tiếng Việt, độ chính xác, loại chữ (giản thể/phồn thể).
 5. **Lưu & xem lịch sử** - Tự động lưu vào lịch sử; nhấn biểu tượng 📋 để mở, hoặc vào `/history`.
 
@@ -128,8 +155,8 @@ npm run start
 Xem chi tiết từng phase tại [`_docs/02_phases.md`](_docs/02_phases.md). Tóm tắt:
 
 - ✅ **Phase 1 — Foundation**: Next.js + Tailwind, upload/camera, API structure cơ bản
-- ✅ **Phase 2 — OCR**: Tesseract.js với model tiếng Trung giản thể/phồn thể
-- ✅ **Phase 3 — Dịch thuật**: Gemini API dịch text OCR và trả segments
+- ✅ **Phase 2 — OCR**: PaddleOCR service nhận dạng chữ, confidence và bbox
+- ✅ **Phase 3 — Dịch thuật**: Gemini dịch văn bản OCR và trả bản dịch theo từng dòng
 - 🔄 **Phase 4 — Tối ưu**: rate limiting, cache, retry mechanism
 - 🔄 **Phase 5 — Lịch sử nâng cao**: export CSV/PDF, batch nhiều ảnh
 - ⬜ **Phase 6 — Auth & Admin**: đăng nhập, quản lý tier người dùng
