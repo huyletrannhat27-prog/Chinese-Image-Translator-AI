@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import sharp from 'sharp';
 
-export const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
+const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
 
 export type VisionTranslationInput = {
   text: string;
@@ -122,7 +122,7 @@ export function parseVisionTranslation(
   }
 }
 
-export function normalizeVisualRegions(regions: ParsedVisionTranslation['visualRegions']) {
+function normalizeVisualRegions(regions: ParsedVisionTranslation['visualRegions']) {
   if (!Array.isArray(regions)) return undefined;
 
   const normalized = regions.flatMap((region) => {

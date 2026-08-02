@@ -10,7 +10,7 @@ Dự án hiện tại dùng **Google Gemini API**, model mặc định `gemini-3
 Ảnh → Tesseract.js OCR → text/bbox → Gemini API → bản dịch tiếng Việt
 ```
 
-Gemini không còn nhận ảnh để làm OCR trong luồng chính. API nhận text OCR và danh sách dòng, sau đó trả bản dịch hoàn chỉnh, segments và `translatedLines` để overlay đúng vùng chữ. Dự án chưa dùng Google Cloud Translation, Azure Translator, DeepL, Argos hay LibreTranslate trong luồng hiện tại.
+Gemini không nhận ảnh trong luồng UI chính. `/api/verify` nhận kết quả OCR, trả bản dịch hoàn chỉnh/segments và gọi Gemini lần hai để dịch vòng về tiếng Trung. Điểm tương đồng giữa text gốc và bản dịch vòng được hiển thị như một tín hiệu để người dùng đối chiếu. `/api/translate` vẫn hỗ trợ danh sách dòng và cache/retry cho các luồng chỉ cần dịch text.
 
 ## 2. Dịch máy chuyên dụng trên cloud
 
@@ -32,7 +32,7 @@ Gemini không còn nhận ảnh để làm OCR trong luồng chính. API nhận 
 
 | Công cụ | Ưu điểm | Nhược điểm | Nên dùng khi |
 |---|---|---|---|
-| **Google Gemini API** | Nhận ảnh trực tiếp; hiểu ngữ cảnh, tiếng lóng, tone; OCR + dịch một request; JSON schema | Không hoàn toàn tất định; có thể diễn giải/bỏ sót; ảnh và output dài làm tăng token/độ trễ | Ảnh hội thoại/screenshot; **mặc định hiện tại** |
+| **Google Gemini API** | Hiểu ngữ cảnh, tiếng lóng, tone; hỗ trợ text/vision và JSON | Không hoàn toàn tất định; có thể diễn giải; cần kiểm tra output | Dịch text OCR và dịch vòng; **provider mặc định hiện tại** |
 | **OpenAI API** | Multilingual/vision; hiểu bố cục; dịch tự nhiên; output có cấu trúc | Cần mạng; tính token/image detail; có thể hallucinate; thường tốn hơn NMT ở volume lớn | Ảnh khó, cần reasoning và JSON |
 | **Anthropic Claude API** | Hiểu ngữ cảnh/tài liệu; prompt linh hoạt; có thể nhận ảnh | Cần mạng; độ trễ/giá tùy model; không phải translation engine tất định | Provider thay thế hoặc so sánh chất lượng |
 

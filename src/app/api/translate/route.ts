@@ -1,7 +1,24 @@
+import { ApiError, GoogleGenAI } from '@google/genai';
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenAI } from '@google/genai';
+import {
+  buildTranslationCacheKey,
+  getCachedTranslation,
+  setCachedTranslation,
+  withSingleFlight,
+} from '@/lib/cache';
+import { checkTranslateRateLimit, getClientIdentifier, retryAfterSecondsFromReset } from '@/lib/rate-limit';
+import {
+  createTimeoutSignal,
+  isRetryableStatus,
+  makeRetryableError,
+  withRetry,
+  type RetryableCallError,
+} from '@/lib/retry';
 
 export const maxDuration = 60;
+
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
+const PROMPT_VERSION = 'v2';
 
 type TranslationInput = {
   text: string;
@@ -10,10 +27,33 @@ type TranslationInput = {
   lines?: string[];
 };
 
+type GeminiTranslationPayload = {
+  translation: string;
+  detectedScript: 'simplified' | 'traditional' | 'mixed';
+  segments: Array<{ original: string; translated: string }>;
+  confidence: number;
+  provider: 'gemini';
+  translatedLines?: string[];
+};
+
 export async function POST(req: NextRequest) {
+  const identifier = getClientIdentifier(req);
+  const rate = await checkTranslateRateLimit(identifier);
+  if (!rate.success) {
+    const retryAfter = retryAfterSecondsFromReset(rate.reset);
+    return NextResponse.json(
+      {
+        error: `Bạn đã gửi quá nhiều yêu cầu dịch. Vui lòng thử lại sau ${retryAfter} giây.`,
+        code: 'RATE_LIMITED',
+      },
+      { status: 429, headers: { 'Retry-After': String(retryAfter) } }
+    );
+  }
+
   try {
     const { text, target, source, lines } = await readTranslationInput(req);
-    if (!text.trim()) {
+    const normalizedText = text.trim();
+    if (!normalizedText) {
       return NextResponse.json({ error: 'Không có văn bản OCR để dịch' }, { status: 400 });
     }
 
@@ -25,39 +65,89 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const ai = new GoogleGenAI({ apiKey });
-    const response = await ai.models.generateContent({
-      model: process.env.GEMINI_MODEL || 'gemini-3.5-flash',
-      contents: buildTranslationPrompt(text, target, source, lines),
-      config: {
-        temperature: 0.2,
-        maxOutputTokens: 4096,
-        responseMimeType: 'application/json',
-      },
-    });
-
-    const parsed = parseTranslationResponse(response.text || '');
-    const translatedLines =
-      lines && parsed.translatedLines?.length === lines.length
-        ? parsed.translatedLines
-        : undefined;
-
-    return NextResponse.json({
-      translation: parsed.translation,
-      correctedText: text,
-      detectedScript: parsed.script || 'simplified',
-      segments: parsed.segments?.length
-        ? parsed.segments
-        : [{ original: text, translated: parsed.translation }],
-      translatedLines,
-      confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.9,
+    const cacheKey = buildTranslationCacheKey({
+      text: normalizedText,
       provider: 'gemini',
+      model: GEMINI_MODEL,
+      source,
+      target,
+      promptVersion: PROMPT_VERSION,
     });
+    const cached = await getCachedTranslation<GeminiTranslationPayload>(cacheKey);
+    if (cached) return NextResponse.json({ ...cached, cached: true });
+
+    const payload = await withSingleFlight(cacheKey, async () => {
+      const recheck = await getCachedTranslation<GeminiTranslationPayload>(cacheKey);
+      if (recheck) return recheck;
+
+      const { signal, clear } = createTimeoutSignal();
+      try {
+        const ai = new GoogleGenAI({ apiKey });
+        const response = await withRetry(
+          'gemini',
+          async () => {
+            try {
+              return await ai.models.generateContent({
+                model: GEMINI_MODEL,
+                contents: buildTranslationPrompt(normalizedText, target, source, lines),
+                config: {
+                  temperature: 0.2,
+                  maxOutputTokens: 6144,
+                  responseMimeType: 'application/json',
+                },
+              });
+            } catch (error) {
+              if (error instanceof ApiError) {
+                throw makeRetryableError(error.message, {
+                  status: error.status,
+                  retryable: isRetryableStatus(error.status),
+                });
+              }
+              if (error instanceof Error && error.name === 'AbortError') throw error;
+              throw makeRetryableError(
+                error instanceof Error ? error.message : 'Lỗi không xác định từ Gemini',
+                { retryable: true }
+              );
+            }
+          },
+          { signal }
+        );
+
+        const parsed = parseTranslationResponse(response.text || '', normalizedText);
+        const translatedLines =
+          lines && parsed.translatedLines?.length === lines.length
+            ? parsed.translatedLines
+            : undefined;
+        const result: GeminiTranslationPayload = {
+          translation: parsed.translation,
+          detectedScript: parsed.script || 'simplified',
+          segments: parsed.segments?.length
+            ? parsed.segments
+            : [{ original: normalizedText, translated: parsed.translation }],
+          confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.9,
+          provider: 'gemini',
+          translatedLines,
+        };
+
+        await setCachedTranslation(cacheKey, result);
+        return result;
+      } finally {
+        clear();
+      }
+    });
+
+    return NextResponse.json({ ...payload, cached: false });
   } catch (error) {
     console.error('Gemini translation error:', error);
+    const message = error instanceof Error ? error.message : 'Dịch thuật thất bại';
+    const status = (error as RetryableCallError).status;
+    const isAuthError = /401|403|unauthorized|invalid authentication|api key/i.test(message);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Dịch thuật thất bại', code: 'TRANSLATION_FAILED' },
-      { status: 500 }
+      {
+        error: isAuthError ? 'Gemini từ chối API key. Vui lòng kiểm tra GEMINI_API_KEY.' : message,
+        code: isAuthError ? 'INVALID_GEMINI_API_KEY' : 'TRANSLATION_FAILED',
+      },
+      { status: isAuthError ? 503 : status === 429 ? 429 : 500 }
     );
   }
 }
@@ -66,17 +156,11 @@ async function readTranslationInput(req: NextRequest): Promise<TranslationInput>
   const contentType = req.headers.get('content-type') || '';
   if (contentType.includes('multipart/form-data')) {
     const formData = await req.formData();
-    const linesValue = formData.get('lines');
-    let lines: string[] | undefined;
-    if (typeof linesValue === 'string' && linesValue.trim()) {
-      const parsed = JSON.parse(linesValue);
-      if (Array.isArray(parsed)) lines = parsed.filter((line): line is string => typeof line === 'string');
-    }
     return {
       text: String(formData.get('text') || ''),
       target: String(formData.get('target') || 'vi'),
       source: String(formData.get('source') || 'zh'),
-      lines,
+      lines: parseLines(formData.get('lines')),
     };
   }
 
@@ -91,11 +175,25 @@ async function readTranslationInput(req: NextRequest): Promise<TranslationInput>
   };
 }
 
+function parseLines(value: FormDataEntryValue | null): string[] | undefined {
+  if (typeof value !== 'string' || !value.trim()) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed)
+      ? parsed.filter((line): line is string => typeof line === 'string')
+      : undefined;
+  } catch {
+    throw new Error('Danh sách vùng OCR không hợp lệ');
+  }
+}
+
 function buildTranslationPrompt(text: string, target: string, source: string, lines?: string[]) {
   const targetName = target === 'vi' ? 'Tiếng Việt' : target;
   const sourceName = source === 'zh' ? 'tiếng Trung' : source;
   const lineInstruction = lines?.length
-    ? `\nDanh sách dòng OCR theo đúng thứ tự (phải trả translatedLines đúng ${lines.length} phần tử):\n${lines.map((line, index) => `${index + 1}. ${line}`).join('\n')}`
+    ? `\nDanh sách dòng OCR theo đúng thứ tự (trả translatedLines đúng ${lines.length} phần tử):\n${lines
+        .map((line, index) => `${index + 1}. ${line}`)
+        .join('\n')}`
     : '';
 
   return `Bạn là dịch giả chuyên nghiệp. Dịch văn bản ${sourceName} sang ${targetName}.
@@ -111,7 +209,10 @@ Văn bản OCR:
 ${text}${lineInstruction}`;
 }
 
-function parseTranslationResponse(content: string): {
+function parseTranslationResponse(
+  content: string,
+  originalText: string
+): {
   translation: string;
   script?: 'simplified' | 'traditional' | 'mixed';
   segments?: Array<{ original: string; translated: string }>;
@@ -119,11 +220,24 @@ function parseTranslationResponse(content: string): {
   translatedLines?: string[];
 } {
   const fenced = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/)?.[1] || content;
-  const parsed = JSON.parse(fenced.match(/\{[\s\S]*\}/)?.[0] || fenced);
-  if (typeof parsed.translation !== 'string' || !parsed.translation.trim()) {
-    throw new Error('Gemini không trả về bản dịch hợp lệ');
+  try {
+    const parsed = JSON.parse(fenced.match(/\{[\s\S]*\}/)?.[0] || fenced);
+    if (typeof parsed.translation !== 'string' || !parsed.translation.trim()) {
+      throw new Error('Gemini không trả về bản dịch hợp lệ');
+    }
+    return parsed;
+  } catch (error) {
+    const translationField = fenced.match(/"translation"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+    if (translationField) {
+      const translation = JSON.parse(`"${translationField[1]}"`) as string;
+      return {
+        translation,
+        segments: [{ original: originalText, translated: translation }],
+        confidence: 0.7,
+      };
+    }
+    throw error instanceof Error ? error : new Error('Không đọc được phản hồi dịch từ Gemini');
   }
-  return parsed;
 }
 
 function normalizeApiKey(value: string | undefined) {

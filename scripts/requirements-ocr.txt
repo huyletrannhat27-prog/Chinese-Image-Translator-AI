@@ -1,0 +1,11 @@
+# Cài để chạy scripts/paddle_ocr.py (OCR chữ Trung self-host bằng PaddleOCR).
+# Xem _docs/04_ocr_tools.md (mục PaddleOCR) và _docs/08_accuracy_verification.md.
+#
+# Cài đặt:
+#   pip install -r scripts/requirements-ocr.txt
+#
+# Lưu ý: paddlepaddle khá nặng (vài trăm MB) và cài lâu hơn các package
+# Node.js thông thường trong dự án - đây là điều bình thường.
+paddlepaddle>=2.6.0
+paddleocr>=2.7.0
+Pillow>=10.0.0

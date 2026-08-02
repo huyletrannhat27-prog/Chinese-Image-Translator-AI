@@ -1,97 +1,92 @@
-# 🀄 Chinese Image Translator AI
+# Hanzi Lens — Chinese Image Translator AI
 
-[![Next.js](https://img.shields.io/badge/Next.js_14-000000?style=flat&logo=next.js&logoColor=white)](https://nextjs.org/)
+[![Next.js](https://img.shields.io/badge/Next.js_16-000000?style=flat&logo=next.js&logoColor=white)](https://nextjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Tesseract OCR](https://img.shields.io/badge/OCR-Tesseract-4F46E5?style=flat)](#)
-[![Gemini](https://img.shields.io/badge/Gemini-8E75B2?style=flat&logo=google&logoColor=white)](https://deepmind.google/technologies/gemini/)
+[![OCR](https://img.shields.io/badge/OCR-Tesseract.js_%2B_PaddleOCR-4F46E5?style=flat)](#kiến-trúc)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-**Ứng dụng web dịch tiếng Trung từ hình ảnh - Không cần đăng nhập, chụp/upload ảnh là dịch ngay!**
+Ứng dụng nhận dạng chữ Trung trong ảnh, dịch sang tiếng Việt và hiển thị độ tin cậy của OCR cùng độ tương đồng của bản dịch.
 
----
+## Dùng thử trực tuyến
 
-## ✨ Tính năng
+**[Mở Hanzi Lens tại chinese-image-translator-ai.onrender.com](https://chinese-image-translator-ai.onrender.com)**
 
-### 🎯 Tính năng chính
-- **📸 Chụp ảnh trực tiếp** - Dùng camera trình duyệt, chụp là dịch
-- **🖼️ Upload từ máy** - Hỗ trợ ảnh có sẵn (tối đa 10MB)
-- **🌏 Giản thể & Phồn thể** - Tự động nhận diện và dịch
-- **📖 Phân đoạn** - Hiển thị từng câu gốc + câu dịch song song
-- **📋 Lịch sử** - Lưu lại các bản dịch trong trình duyệt (localStorage), xem lại/xoá/export JSON
-- **⬇️ Tải kết quả** - Export bản dịch ra file .txt
+> Bản miễn phí trên Render có thể cần một ít thời gian để khởi động sau thời gian không hoạt động.
 
-### ⚡ Điểm nổi bật
-- ✅ **Không cần đăng nhập** - Dùng ngay khi mở trang
-- ✅ **Dịch chính xác** - Tesseract OCR nhận dạng chữ, Gemini API dịch sang tiếng Việt
-- ✅ **Bảo mật** - Ảnh xử lý theo request, không lưu trữ vĩnh viễn trên server
+## Tính năng
 
----
+- Chụp ảnh trực tiếp bằng camera hoặc chọn ảnh từ thiết bị, tối đa 10 MB.
+- Nhận dạng chữ Trung giản thể, phồn thể và văn bản Latin bằng PaddleOCR (server) theo mặc định; Tesseract.js được dùng làm fallback trên trình duyệt nếu môi trường deploy không có Python/Paddle.
+- Dịch văn bản OCR sang tiếng Việt bằng Google Gemini.
+- Ước lượng độ tin cậy OCR từ confidence của từng vùng chữ.
+- Kiểm tra bản dịch bằng dịch vòng Việt → Trung và hệ số tương đồng Dice.
+- Hiển thị bản dịch theo vùng khi số đoạn dịch khớp với vùng OCR.
+- Lưu lịch sử trong `localStorage`, sao chép và tải kết quả dạng văn bản.
+- Hỗ trợ PWA và đóng gói Android bằng Capacitor.
+- Rate limit, cache và retry có kiểm soát cho API dịch.
 
-## 🛠️ Công nghệ sử dụng
+## Kiến trúc
+
+```text
+Chụp hoặc tải ảnh
+        |
+        v
+Tesseract.js trên trình duyệt
+(text, bbox, confidence, loại chữ)
+        |
+        v
+Gemini: Trung -> Việt
+        |
+        +--> Gemini: Việt -> Trung (dịch vòng)
+        |
+        v
+Tính điểm OCR + điểm tương đồng bản dịch
+        |
+        v
+Hiển thị kết quả và lưu lịch sử cục bộ
+```
+
+Luồng trên được dùng trên giao diện để phản hồi nhanh và deploy thuận tiện. Dự án còn cung cấp `/api/ocr` và nhánh gửi ảnh của `/api/verify` để chạy PaddleOCR self-host khi môi trường đã cài Python và các gói trong `scripts/requirements-ocr.txt`.
+
+## Công nghệ
 
 | Thành phần | Công nghệ | Vai trò |
 |---|---|---|
-| **Framework** | Next.js 14 (App Router) | Web app, API routes |
-| **Ngôn ngữ** | TypeScript | Type-safe |
-| **UI** | Tailwind CSS + Radix UI | Giao diện responsive |
-| **OCR** | Tesseract.js + `chi_sim`/`chi_tra`/`eng` | Nhận dạng chữ Trung/Latin, confidence và bbox |
-| **Dịch thuật** | Google Gemini API (`gemini-3.5-flash`) | Dịch text OCR Trung → Việt, trả JSON/segments |
-| **Tiền xử lý ảnh** | Sharp | Xoay ảnh theo EXIF, resize và tối ưu payload |
-| **Lịch sử** | localStorage (client) | Không cần database |
+| Web | Next.js 16, React 19, TypeScript | Giao diện và API routes |
+| UI | Tailwind CSS, Lucide React | Giao diện responsive |
+| OCR chính | PaddleOCR (server) + Tesseract.js (fallback) | PaddleOCR (server-side, chính); Tesseract.js dùng làm fallback nhanh trên trình duyệt |
+| OCR tùy chọn | PaddleOCR, Python | OCR self-host và kiểm thử đối chiếu |
+| Dịch | Google Gemini API | Dịch Trung → Việt và dịch vòng |
+| Xử lý ảnh server | Sharp | Xoay, resize và nén ảnh cho PaddleOCR/API vision |
+| Tối ưu API | Upstash, `p-retry` | Rate limit, cache, retry và timeout |
+| Lịch sử | `localStorage` | Lưu cục bộ, không cần database |
+| Mobile | PWA, Capacitor | Cài trên điện thoại và build Android |
 
----
+## Cài đặt
 
-## 🔄 Luồng xử lý
+### Yêu cầu
 
-```
-📸 Chụp/Upload ảnh
-      ↓
-🖼️ Tiền xử lý (Sharp: xoay đúng chiều, resize, nén ảnh)
-      ↓
-🔎 Tesseract.js: OCR chữ Trung + confidence + bbox
-      ↓
-🤖 Gemini API: dịch text OCR Trung → Việt
-      ↓
-📋 Lưu lịch sử (localStorage) + hiển thị kết quả
-```
+- Node.js 20.9 trở lên.
+- npm 9 trở lên.
+- Một Gemini API key hợp lệ.
+- Python 3 và PaddleOCR chỉ cần khi sử dụng OCR self-host.
 
----
-
-## 🚀 Cài đặt & Chạy
-
-### Yêu cầu hệ thống
-- Node.js >= 18
-- npm (hoặc yarn/pnpm)
-
-### Clone & Cài đặt
+### Chạy web app
 
 ```bash
 git clone https://github.com/huyletrannhat27-prog/Chinese-Image-Translator-AI.git
 cd Chinese-Image-Translator-AI
-
-npm install
+npm ci
 ```
 
-### Cấu hình biến môi trường
-
-Copy `.env.example` thành `.env` rồi điền API key:
-
-```bash
-cp .env.example .env
-```
+Sao chép `.env.example` thành `.env`, sau đó cấu hình tối thiểu:
 
 ```env
-# Cấu hình ít nhất một provider mà bạn muốn dùng
 GEMINI_API_KEY=your_gemini_api_key
-OPENAI_API_KEY=your_openai_api_key
-OPENAI_MODEL=gpt-5.6-terra
-ANTHROPIC_API_KEY=your_anthropic_api_key
-CLAUDE_MODEL=claude-haiku-4-5-20251001
+GEMINI_MODEL=gemini-3.5-flash
 ```
 
-Lấy Gemini API key miễn phí tại: https://aistudio.google.com/app/apikey
-
-### Chạy dev server
+Lấy API key tại [Google AI Studio](https://aistudio.google.com/app/apikey).
 
 ```bash
 npm run dev
@@ -99,59 +94,51 @@ npm run dev
 
 Mở [http://localhost:3000](http://localhost:3000).
 
-### Build production
+### Kiểm tra trước khi chạy production
 
 ```bash
+npm run lint
+npm run type-check
 npm run build
 npm run start
 ```
 
-### Cài trên điện thoại / build APK
+### PaddleOCR tùy chọn
 
-- Trên Android hoặc iPhone: mở website bằng trình duyệt và chọn **Thêm vào màn hình chính** để cài bản PWA.
-- Để tạo APK Android: deploy website trước, sau đó xem hướng dẫn trong [`MOBILE.md`](MOBILE.md). Workflow GitHub Actions có thể tự build file `app-debug.apk` để tải về và chia sẻ.
+```bash
+python -m pip install -r scripts/requirements-ocr.txt
+python scripts/paddle_ocr.py assets/icon.png
+```
 
----
+Trên Linux/macOS có thể dùng `python3`. Nếu executable có tên khác, đặt `PADDLE_OCR_PYTHON_BIN` trong `.env`.
 
-## 📖 Hướng dẫn sử dụng
+## API chính
 
-1. **Mở trang** - Không cần đăng nhập, dùng ngay.
-2. **Chụp/Upload ảnh** - Nhấn "Mở Camera" để chụp, hoặc "Chọn ảnh từ máy".
-3. **Chọn AI và đợi xử lý** - Gemini, OpenAI hoặc Claude sẽ đọc ảnh rồi dịch trực tiếp.
-4. **Xem kết quả** - Văn bản OCR, bản dịch tiếng Việt, độ chính xác, loại chữ (giản thể/phồn thể).
-5. **Lưu & xem lịch sử** - Tự động lưu vào lịch sử; nhấn biểu tượng 📋 để mở, hoặc vào `/history`.
+| Endpoint | Chức năng |
+|---|---|
+| `POST /api/verify` | Dịch và tính độ tin cậy OCR/độ tương đồng bản dịch; nhận kết quả OCR hoặc ảnh |
+| `POST /api/translate` | Dịch text OCR bằng Gemini, có rate limit/cache/retry |
+| `POST /api/ocr` | Chạy PaddleOCR self-host trên ảnh |
+| `GET /api/detect-script` | Hỗ trợ xác định giản thể/phồn thể |
 
----
+Điểm dịch vòng chỉ là tín hiệu tham khảo. Một bản dịch đúng nhưng diễn đạt khác vẫn có thể có độ tương đồng thấp; không nên dùng điểm này làm tiêu chí duy nhất để kết luận bản dịch sai.
 
-## 🎯 Kế hoạch phát triển
+## Mobile
 
-Xem chi tiết từng phase tại [`_docs/02_phases.md`](_docs/02_phases.md). Tóm tắt:
+- Mở website trên Android/iOS và chọn **Thêm vào màn hình chính** để cài PWA.
+- Xem [MOBILE.md](MOBILE.md) để build APK Android bằng Capacitor hoặc GitHub Actions.
 
-- ✅ **Phase 1 — Foundation**: Next.js + Tailwind, upload/camera, API structure cơ bản
-- ✅ **Phase 2 — OCR**: Tesseract.js với model tiếng Trung giản thể/phồn thể
-- ✅ **Phase 3 — Dịch thuật**: Gemini API dịch text OCR và trả segments
-- 🔄 **Phase 4 — Tối ưu**: rate limiting, cache, retry mechanism
-- 🔄 **Phase 5 — Lịch sử nâng cao**: export CSV/PDF, batch nhiều ảnh
-- ⬜ **Phase 6 — Auth & Admin**: đăng nhập, quản lý tier người dùng
+## Tài liệu đồ án
 
-## 📚 Tài liệu nghiên cứu
+- [Tổng quan hệ thống](_docs/01_overview.md)
+- [Các giai đoạn phát triển](_docs/02_phases.md)
+- [Công cụ OCR](_docs/04_ocr_tools.md)
+- [Công cụ dịch thuật](_docs/05_translation_tools.md)
+- [Camera realtime và giảm độ trễ](_docs/06_realtime_camera_tools.md)
+- [Rate limiting, cache và retry](_docs/07_phase4_optimization_tools.md)
+- [Xác định độ chính xác OCR và dịch thuật](_docs/08_accuracy_verification.md)
+- [Tài liệu thuyết trình OCR và dịch thuật](_docs/08_thuyet_trinh_ocr_va_dich_thuat.md)
 
-- [Tài liệu thuyết trình OCR và dịch thuật](_docs/08_thuyet_trinh_ocr_va_dich_thuat.md) — bản cô đọng để thuyết trình, so sánh công cụ và giải thích lựa chọn kiến trúc.
-- [Công cụ OCR](_docs/04_ocr_tools.md) — các lựa chọn OCR offline, on-device, cloud và AI Vision; ưu/nhược điểm và công cụ dự án đang dùng.
-- [Công cụ dịch thuật](_docs/05_translation_tools.md) — so sánh NMT, dịch offline/self-host và LLM đa phương thức.
-- [Camera realtime và giảm độ trễ](_docs/06_realtime_camera_tools.md) — công cụ chụp/stream frame, nguyên nhân gây trễ và kiến trúc realtime đề xuất.
-- [Phase 4: rate limiting, cache và retry](_docs/07_phase4_optimization_tools.md) — mục đích, công cụ, ưu/nhược điểm và combo tối ưu đề xuất cho Next.js/Vercel.
-
----
-
-## 🤝 Đóng góp
-
-1. Fork dự án
-2. Tạo branch mới (`git checkout -b feature/amazing`)
-3. Commit thay đổi (`git commit -m 'Add amazing feature'`)
-4. Push lên branch (`git push origin feature/amazing`)
-5. Mở Pull Request
-
-## 📄 License
+## Giấy phép
 
 MIT © huyletrannhat27-prog
