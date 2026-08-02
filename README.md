@@ -9,7 +9,7 @@
 
 ## Dùng thử trực tuyến
 
-**[Mở Hanzi Lens tại chinese-image-translator-ai.onrender.com](https://chinese-image-translator-ai.onrender.com)**
+**[Mở Hanzi Lens tại chinese-image-translator-ai-1.onrender.com](https://chinese-image-translator-ai-1.onrender.com)**
 
 > Bản miễn phí trên Render có thể cần một ít thời gian để khởi động sau thời gian không hoạt động.
 

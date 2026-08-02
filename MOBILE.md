@@ -1,6 +1,6 @@
 # Hanzi Lens trên Android
 
-Ứng dụng Android dùng Capacitor để mở [bản Hanzi Lens đã deploy trên Render](https://chinese-image-translator-ai.onrender.com). Phần dịch và kiểm chứng dùng API trên server; vì vậy APK cần Internet.
+Ứng dụng Android dùng Capacitor để mở [bản Hanzi Lens đã deploy trên Render](https://chinese-image-translator-ai-1.onrender.com). Phần dịch và kiểm chứng dùng API trên server; vì vậy APK cần Internet.
 
 ## Build APK local
 
