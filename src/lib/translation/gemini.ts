@@ -32,7 +32,7 @@ export class GeminiTranslator {
         contents: prompt,
         config: {
         temperature: 0.3,
-        maxOutputTokens: 1024,
+        maxOutputTokens: 6144,
         topP: 0.95,
         topK: 40,
         responseMimeType: 'application/json',
@@ -45,7 +45,9 @@ export class GeminiTranslator {
       return this.parseResponse(content, text);
     } catch (error) {
       console.error('Gemini translation error:', error);
-      throw new Error('Translation failed');
+      // Giữ nguyên message cụ thể từ parseResponse (vd. lỗi parse JSON) thay
+      // vì luôn ghi đè bằng thông báo chung chung, để dễ debug hơn.
+      throw error instanceof Error ? error : new Error('Translation failed');
     }
   }
 
@@ -88,16 +90,28 @@ NGÔN NGỮ ĐÍCH: ${targetLang}`;
       'vi': 'Tiếng Việt',
       'en': 'Tiếng Anh',
       'zh': 'Tiếng Trung',
+      // Dùng khi cần chỉ định rõ biến thể chữ Trung (vd. bước back-translation
+      // trong accuracy.ts cần dịch ngược ĐÚNG biến thể gốc để so sánh công
+      // bằng - xem evaluateTranslationAccuracy).
+      'zh-Hant': 'Tiếng Trung Phồn thể (Traditional Chinese)',
+      'zh-Hans': 'Tiếng Trung Giản thể (Simplified Chinese)',
       'ja': 'Tiếng Nhật',
       'ko': 'Tiếng Hàn',
     };
     return map[code] || code;
   }
 
+  // Parse phản hồi Gemini thành TranslationResult. Phải chịu được 2 kiểu lỗi
+  // thường gặp (giống parseTranslationResponse trong
+  // src/app/api/translate/route.ts): (1) model bọc JSON trong khối markdown
+  // ```json ... ```, (2) JSON bị cắt cụt giữa chừng do vượt maxOutputTokens.
+  // Không bao giờ để lọt JSON thô/cắt cụt ra ngoài làm "translation".
   private parseResponse(content: string, originalText: string): TranslationResult {
+    const fenceMatch = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    const unfenced = fenceMatch ? fenceMatch[1] : content;
+
     try {
-      // Extract JSON from response
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      const jsonMatch = unfenced.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
         return {
@@ -107,16 +121,25 @@ NGÔN NGỮ ĐÍCH: ${targetLang}`;
           confidence: parsed.confidence || 0.9,
         };
       }
-    } catch (e) {
-      console.warn('Failed to parse Gemini response, using raw text');
+    } catch {
+      console.warn('Failed to parse Gemini response as JSON, trying partial recovery');
     }
 
-    // Fallback: return raw response
-    return {
-      translation: content,
-      detectedScript: 'simplified',
-      segments: [{ original: originalText, translated: content }],
-      confidence: 0.8,
-    };
+    // JSON bị cắt cụt (thiếu dấu đóng) - cố lấy riêng field "translation" bằng
+    // regex thay vì trả nguyên JSON thô/cắt cụt làm bản dịch.
+    const translationField = unfenced.match(/"translation"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+    if (translationField) {
+      const translation = translationField[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
+      return {
+        translation,
+        detectedScript: 'simplified',
+        segments: [{ original: originalText, translated: translation }],
+        confidence: 0.7,
+      };
+    }
+
+    // Không phục hồi được gì đáng tin - báo lỗi thay vì trả rác cho người
+    // dùng (rác ở đây còn làm hỏng luôn bước back-translation ở accuracy.ts).
+    throw new Error('Không đọc được phản hồi dịch từ Gemini, vui lòng thử lại');
   }
 }
