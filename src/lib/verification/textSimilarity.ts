@@ -33,20 +33,39 @@ export function bigramDiceSimilarity(a: string, b: string): number {
   if (!normA || !normB) return 0;
   if (normA === normB) return 1;
 
+  // Bigram không phù hợp khi một vế chỉ có 1 ký tự (vd. 译 được dịch vòng
+  // thành 翻译: cùng nghĩa nhưng một bên không tạo được bigram). Với chuỗi
+  // rất ngắn, dùng Dice trên từng ký tự để tránh false negative rõ ràng.
+  if (Math.min(normA.length, normB.length) < 2) {
+    return diceFromCounts(toCharacterCounts(normA), toCharacterCounts(normB));
+  }
+
   const bigrams = toBigramCounts(normA);
   const bigramsOther = toBigramCounts(normB);
 
+  return diceFromCounts(bigrams, bigramsOther);
+}
+
+function diceFromCounts(counts: Map<string, number>, otherCounts: Map<string, number>): number {
   let intersection = 0;
-  for (const [pair, count] of bigrams) {
-    const otherCount = bigramsOther.get(pair);
+  for (const [token, count] of counts) {
+    const otherCount = otherCounts.get(token);
     if (otherCount) intersection += Math.min(count, otherCount);
   }
 
-  const totalA = sumCounts(bigrams);
-  const totalB = sumCounts(bigramsOther);
+  const totalA = sumCounts(counts);
+  const totalB = sumCounts(otherCounts);
   if (totalA + totalB === 0) return 0;
 
   return (2 * intersection) / (totalA + totalB);
+}
+
+function toCharacterCounts(text: string): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const character of text) {
+    counts.set(character, (counts.get(character) || 0) + 1);
+  }
+  return counts;
 }
 
 function toBigramCounts(text: string): Map<string, number> {

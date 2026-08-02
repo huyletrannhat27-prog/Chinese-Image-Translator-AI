@@ -7,8 +7,9 @@ import type { OCRResult } from '@/types';
 
 // Cho phép override đường dẫn python (vd. venv riêng) qua .env, mặc định
 // dùng python3 có sẵn trên PATH của server.
-const PYTHON_BIN = process.env.PADDLE_OCR_PYTHON_BIN || 'python3';
-const SCRIPT_PATH = join(process.cwd(), 'scripts', 'paddle_ocr.py');
+const PYTHON_BIN =
+  process.env.PADDLE_OCR_PYTHON_BIN || (process.platform === 'win32' ? 'python' : 'python3');
+const SCRIPT_PATH = 'scripts/paddle_ocr.py';
 // Mỗi lần gọi runPaddleOcr() sẽ spawn 1 tiến trình Python MỚI (import
 // paddle/paddleocr từ đầu, dù model đã cache trên đĩa) - trên Windows/CPU
 // việc này có thể mất hơn 30s, nên để timeout rộng rãi hơn hẳn thời gian
@@ -29,7 +30,10 @@ export async function runPaddleOcr(
   imageBuffer: Buffer,
   options: { lang?: string } = {}
 ): Promise<OCRResult> {
-  const tempPath = join(tmpdir(), `paddle-ocr-${randomUUID()}.jpg`);
+  const tempPath = join(
+    /* turbopackIgnore: true */ tmpdir(),
+    `paddle-ocr-${randomUUID()}.jpg`
+  );
   await writeFile(tempPath, imageBuffer);
 
   try {

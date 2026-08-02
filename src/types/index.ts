@@ -27,6 +27,27 @@ export interface TranslationResult {
   translatedRegions?: string[];
   imageWidth?: number;
   imageHeight?: number;
+  accuracy?: AccuracyReport;
+  verificationWarning?: string;
+}
+
+export interface OcrAccuracyReport {
+  averageConfidence: number;
+  totalBoxes: number;
+  lowConfidenceBoxes: Array<{ text: string; confidence: number }>;
+  reliable: boolean;
+}
+
+export interface TranslationAccuracyReport {
+  method: 'back-translation';
+  backTranslatedText: string;
+  similarityScore: number;
+  reliable: boolean;
+}
+
+interface AccuracyReport {
+  ocr: OcrAccuracyReport;
+  translation: TranslationAccuracyReport;
 }
 
 // OCR result type
@@ -43,57 +64,4 @@ export interface OCRResult {
   regions?: OCRRegion[];
   imageWidth?: number;
   imageHeight?: number;
-}
-
-// Translation request type
-export interface TranslateRequest {
-  text: string;
-  target: string;
-  source?: string;
-  provider?: 'gemini';
-}
-
-// Translation response type
-export interface TranslateResponse {
-  translation: string;
-  detectedScript: 'simplified' | 'traditional' | 'mixed';
-  segments: Array<{
-    original: string;
-    translated: string;
-  }>;
-  confidence: number;
-  provider: string;
-  processingTime: number;
-  // true nếu kết quả được trả từ cache Phase 4 (không gọi lại AI provider).
-  cached?: boolean;
-}
-
-// History store type
-export interface HistoryStore {
-  history: TranslationResult[];
-  addHistory: (item: TranslationResult) => void;
-  removeHistory: (id: string) => void;
-  clearHistory: () => void;
-  loadHistory: () => void;
-}
-
-// User settings type
-export interface UserSettings {
-  targetLanguage: 'vi' | 'en' | 'ja' | 'ko' | 'zh';
-  sourceLanguage: 'zh' | 'ja' | 'ko' | 'en';
-  ocrLanguage: 'chi_sim' | 'chi_tra' | 'chi_sim+chi_tra';
-  provider: 'gemini';
-  autoProcess: boolean;
-  saveHistory: boolean;
-  compressionQuality: number; // 0-100
-}
-
-// Image processing options
-export interface ImageProcessOptions {
-  maxWidth?: number;
-  maxHeight?: number;
-  quality?: number;
-  grayscale?: boolean;
-  sharpen?: boolean;
-  denoise?: boolean;
 }

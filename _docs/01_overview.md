@@ -10,13 +10,14 @@ Xây dựng một ứng dụng web cho phép người dùng upload ảnh chứa 
 
 | Thành phần | Lựa chọn | Ghi chú |
 |---|---|---|
-| Framework | Next.js 14 | App Router, React Server Components |
-| UI | Tailwind CSS + Shadcn/ui | Giao diện hiện đại, responsive |
-| OCR + dịch | Gemini / OpenAI / Claude Vision | Chọn trực tiếp trên giao diện |
-| Xử lý ảnh | Sharp | Xoay theo EXIF, resize, tối ưu trước khi gửi AI |
+| Framework | Next.js 16 | App Router, React Server Components |
+| UI | Tailwind CSS + Lucide React | Giao diện hiện đại, responsive |
+| OCR | Tesseract.js; PaddleOCR tùy chọn | OCR client nhanh; OCR Python để kiểm thử/self-host |
+| Dịch và kiểm chứng | Google Gemini | Dịch Trung → Việt và dịch vòng Việt → Trung |
+| Xử lý ảnh | Sharp | Chuẩn hóa ảnh cho các API OCR/vision phía server |
 | File upload | Next.js Route Handler (FormData) | Xử lý multipart/form-data |
 | Lịch sử | localStorage (client) | Xem `src/lib/history/storage.ts` |
-| Deploy | Vercel / Docker | |
+| Deploy | Render, PWA, Capacitor | Web production và Android |
 
 ---
 
@@ -26,7 +27,6 @@ Xây dựng một ứng dụng web cho phép người dùng upload ảnh chứa 
 - Upload ảnh có chứa văn bản tiếng Trung
 - Xem kết quả OCR và bản dịch
 - Copy nội dung gốc và bản dịch
-- Chọn ngôn ngữ đích (Việt/Anh/...)
 - Xem lịch sử dịch
 
 ### Admin (hệ thống) — dự kiến Phase 6
@@ -42,7 +42,8 @@ Xây dựng một ứng dụng web cho phép người dùng upload ảnh chứa 
 - **Giữ ngữ cảnh** — Dịch theo câu/đoạn văn, không word-by-word
 - **Bảo mật** — Ảnh không được lưu trữ vĩnh viễn trên server
 - **Trải nghiệm người dùng** — Camera trực tiếp hoặc upload ảnh, xem trước ảnh, xử lý bất đồng bộ có progress bar
-- **Rate limiting** — Giới hạn số request để tránh lạm dụng API (kế hoạch Phase 4)
+- **Rate limiting** — Giới hạn số request để tránh lạm dụng API
+- **Minh bạch độ chính xác** — Điểm OCR và dịch vòng là tín hiệu tham khảo, không phải bảo đảm tuyệt đối
 
 ---
 
@@ -50,11 +51,12 @@ Xây dựng một ứng dụng web cho phép người dùng upload ảnh chứa 
 
 1. **Chụp ảnh / Upload ảnh** — Camera trực tiếp hoặc chọn file từ máy
 2. **Xem trước ảnh** — Hiển thị ảnh sau khi chụp/upload
-3. **OCR + dịch** — AI Vision nhận diện chữ Hán và dịch trong một lần xử lý
+3. **OCR** — Tesseract.js nhận dạng chữ Hán, confidence và bounding box
 4. **Phát hiện ngôn ngữ** — Tự động nhận diện Giản thể / Phồn thể
-5. **Dịch văn bản** — Chọn Gemini, OpenAI hoặc Claude để dịch sang tiếng Việt
+5. **Dịch văn bản** — Gemini dịch text OCR sang tiếng Việt
 6. **Copy kết quả** — Sao chép nội dung gốc và bản dịch
 7. **Lịch sử dịch** — Lưu, xem lại, xoá, export JSON
+8. **Kiểm chứng** — Tổng hợp confidence OCR và so sánh bản dịch vòng
 
 ---
 

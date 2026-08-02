@@ -41,7 +41,7 @@ Như vậy pipeline hiện tại là **Tesseract OCR → Gemini API translation*
 
 | Công cụ | Ưu điểm | Nhược điểm | Nên dùng khi |
 |---|---|---|---|
-| **Google Gemini Vision** | Hiểu ảnh, chữ và ngữ cảnh; có thể OCR + dịch + JSON trong một request; phù hợp screenshot/hội thoại | Cần mạng; tính token; có thể bỏ sót hoặc đoán chữ; bbox không hoàn toàn ổn định | Muốn pipeline gọn, bản dịch cần ngữ cảnh; **đây là mặc định hiện tại** |
+| **Google Gemini Vision** | Hiểu ảnh, chữ và ngữ cảnh; có thể OCR + dịch + JSON trong một request; phù hợp screenshot/hội thoại | Cần mạng; tính token; có thể bỏ sót hoặc đoán chữ; bbox không hoàn toàn ổn định | Muốn pipeline gọn hoặc dùng làm phương án thử nghiệm; **không phải luồng UI mặc định** |
 | **OpenAI Vision** | Hiểu bố cục/ngữ cảnh, output có cấu trúc; xử lý ảnh trực tiếp | Cần mạng; image detail cao làm tăng độ trễ/chi phí; không phải OCR tất định | Ảnh khó, cần OCR + dịch và JSON |
 | **Anthropic Claude Vision** | Hiểu tài liệu/ảnh và dịch theo ngữ cảnh; prompt linh hoạt | Cần mạng; độ trễ/chi phí theo model; bbox và OCR không tất định | Provider dự phòng hoặc so sánh chất lượng |
 
@@ -55,7 +55,7 @@ Như vậy pipeline hiện tại là **Tesseract OCR → Gemini API translation*
 
 Thử **Tesseract.js trong Web Worker**, nhưng chỉ OCR vùng quan tâm và throttle frame. Cần benchmark kỹ tiếng Trung trên điện thoại yếu.
 
-### Muốn giữ chất lượng/ngữ cảnh như hiện tại
+### Muốn ưu tiên ngữ cảnh bằng AI Vision
 
 Giữ **Gemini/OpenAI/Claude Vision**, nhưng đây nên là chế độ “chụp rồi dịch”, không gọi cloud AI liên tục 15–30 frame/giây.
 

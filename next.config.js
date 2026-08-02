@@ -2,14 +2,13 @@
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  images: {
-    formats: ['image/avif', 'image/webp'],
-    remotePatterns: [
-      {
-        protocol: 'https',
-        hostname: '**',
-      },
-    ],
+  outputFileTracingIncludes: {
+    '/api/ocr': ['./scripts/paddle_ocr.py'],
+    '/api/verify': ['./scripts/paddle_ocr.py'],
+  },
+  outputFileTracingExcludes: {
+    '/api/ocr': ['./next.config.js'],
+    '/api/verify': ['./next.config.js'],
   },
   async headers() {
     return [

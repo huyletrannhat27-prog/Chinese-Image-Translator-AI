@@ -1,30 +1,17 @@
-import type { OCRResult } from '@/types';
+import type {
+  OCRResult,
+  OcrAccuracyReport,
+  TranslationAccuracyReport,
+} from '@/types';
 import { GeminiTranslator } from '@/lib/translation/gemini';
 import { bigramDiceSimilarity, extractHanCharacters } from './textSimilarity';
 
 // Vùng OCR có confidence thấp hơn ngưỡng này bị gắn cờ để người dùng xem lại.
-export const OCR_LOW_CONFIDENCE_THRESHOLD = 0.7;
+const OCR_LOW_CONFIDENCE_THRESHOLD = 0.7;
 // Similarity back-translation thấp hơn ngưỡng này -> nghi ngờ bản dịch lệch nghĩa.
-export const TRANSLATION_LOW_SIMILARITY_THRESHOLD = 0.55;
+const TRANSLATION_LOW_SIMILARITY_THRESHOLD = 0.55;
 
-export interface OcrAccuracyReport {
-  averageConfidence: number;
-  totalBoxes: number;
-  lowConfidenceBoxes: Array<{ text: string; confidence: number }>;
-  reliable: boolean;
-}
-
-export interface TranslationAccuracyReport {
-  method: 'back-translation';
-  backTranslatedText: string;
-  similarityScore: number;
-  reliable: boolean;
-}
-
-export interface AccuracyReport {
-  ocr: OcrAccuracyReport;
-  translation: TranslationAccuracyReport;
-}
+export type { OcrAccuracyReport, TranslationAccuracyReport } from '@/types';
 
 /**
  * Đánh giá độ chính xác OCR dựa trên confidence mà PaddleOCR tự tính cho

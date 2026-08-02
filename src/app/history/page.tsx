@@ -10,7 +10,8 @@ export default function HistoryPage() {
   const [history, setHistory] = useState<TranslationResult[]>([]);
 
   useEffect(() => {
-    setHistory(HistoryStorage.load());
+    const frame = window.requestAnimationFrame(() => setHistory(HistoryStorage.load()));
+    return () => window.cancelAnimationFrame(frame);
   }, []);
 
   const deleteItem = (id: string) => {

@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
       script,
       confidence: 0.95,
     });
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       { error: 'Phát hiện script thất bại' },
       { status: 500 }

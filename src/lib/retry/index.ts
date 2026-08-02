@@ -50,7 +50,7 @@ export function parseRetryAfterMs(header: string | null): number | undefined {
 }
 
 /** Deadline tổng cho một lượt gọi (tính cả các lần retry) - mục 5.4. */
-export const DEFAULT_PROVIDER_TIMEOUT_MS = Number(process.env.PROVIDER_TIMEOUT_MS || 45_000);
+const DEFAULT_PROVIDER_TIMEOUT_MS = Number(process.env.PROVIDER_TIMEOUT_MS || 45_000);
 
 export function createTimeoutSignal(timeoutMs: number = DEFAULT_PROVIDER_TIMEOUT_MS): {
   signal: AbortSignal;

@@ -3,19 +3,16 @@ import sharp from 'sharp';
 import { runPaddleOcr, PaddleOCRError } from '@/lib/ocr/paddle';
 import { GeminiTranslator } from '@/lib/translation/gemini';
 import { evaluateOcrAccuracy, evaluateTranslationAccuracy } from '@/lib/verification/accuracy';
+import type { OCRResult } from '@/types';
 
 export const maxDuration = 120;
 
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
 
 /**
- * Pipeline theo yêu cầu team (nhắn của Nhật Huy): OCR = PaddleOCR (self-host),
- * dịch = Gemini API (chỉ gửi text, không gửi ảnh cho model dịch nữa như
- * /api/translate hiện tại), cộng thêm bước xác định độ chính xác cho cả OCR
- * và bản dịch - xem _docs/08_accuracy_verification.md.
- *
- * Route /api/translate (Gemini Vision, OCR+dịch gộp 1 request) vẫn giữ
- * nguyên làm phương án cũ/dự phòng, không bị ảnh hưởng bởi route này.
+ * Nhận kết quả OCR từ client để phản hồi nhanh, hoặc tự chạy PaddleOCR khi
+ * caller chỉ gửi ảnh. Cả hai nhánh đều dịch text bằng Gemini và đo độ tin
+ * cậy OCR + độ tương đồng dịch vòng.
  */
 export async function POST(req: NextRequest) {
   try {
@@ -29,17 +26,8 @@ export async function POST(req: NextRequest) {
 
     const formData = await req.formData();
     const imageValue = formData.get('image');
+    const clientOcrValue = formData.get('ocr');
     const target = String(formData.get('target') || 'vi');
-
-    if (!imageValue || typeof imageValue === 'string') {
-      return NextResponse.json({ error: 'Thiếu ảnh để xử lý' }, { status: 400 });
-    }
-    if (imageValue.size > MAX_IMAGE_SIZE) {
-      return NextResponse.json({ error: 'Ảnh vượt quá giới hạn 10MB' }, { status: 400 });
-    }
-    if (!imageValue.type.startsWith('image/')) {
-      return NextResponse.json({ error: 'File gửi lên không phải ảnh' }, { status: 400 });
-    }
 
     const apiKey = (process.env.GEMINI_API_KEY || '').trim().replace(/^['"]|['"]$/g, '');
     if (apiKey.length < 20) {
@@ -53,15 +41,30 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const sourceBuffer = Buffer.from(await imageValue.arrayBuffer());
-    const optimizedBuffer = await sharp(sourceBuffer)
-      .rotate()
-      .resize(2560, 2560, { fit: 'inside', withoutEnlargement: true })
-      .jpeg({ quality: 90, mozjpeg: true })
-      .toBuffer();
-
-    // 1) OCR bằng PaddleOCR (self-host)
-    const ocrResult = await runPaddleOcr(optimizedBuffer);
+    // UI gửi sẵn kết quả Tesseract để tránh khởi tạo Paddle model ~1 phút ở
+    // mỗi cold start. API vẫn hỗ trợ PaddleOCR đầy đủ khi chỉ nhận field image.
+    const clientOcr = parseClientOcr(clientOcrValue);
+    let ocrResult: OCRResult;
+    if (clientOcr) {
+      ocrResult = clientOcr;
+    } else {
+      if (!imageValue || typeof imageValue === 'string') {
+        return NextResponse.json({ error: 'Thiếu ảnh hoặc kết quả OCR để xử lý' }, { status: 400 });
+      }
+      if (imageValue.size > MAX_IMAGE_SIZE) {
+        return NextResponse.json({ error: 'Ảnh vượt quá giới hạn 10MB' }, { status: 400 });
+      }
+      if (!imageValue.type.startsWith('image/')) {
+        return NextResponse.json({ error: 'File gửi lên không phải ảnh' }, { status: 400 });
+      }
+      const sourceBuffer = Buffer.from(await imageValue.arrayBuffer());
+      const optimizedBuffer = await sharp(sourceBuffer)
+        .rotate()
+        .resize(2560, 2560, { fit: 'inside', withoutEnlargement: true })
+        .jpeg({ quality: 90, mozjpeg: true })
+        .toBuffer();
+      ocrResult = await runPaddleOcr(optimizedBuffer);
+    }
     if (!ocrResult.text.trim()) {
       return NextResponse.json(
         { error: 'PaddleOCR không nhận diện được chữ nào trong ảnh' },
@@ -92,12 +95,62 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     console.error('Verify pipeline error:', error);
-    const message =
-      error instanceof PaddleOCRError
+    const isPaddleError = error instanceof PaddleOCRError;
+    const message = isPaddleError
+      ? error.message
+      : error instanceof Error
         ? error.message
-        : error instanceof Error
-          ? error.message
-          : 'Lỗi không xác định';
-    return NextResponse.json({ error: message, code: 'VERIFY_PIPELINE_FAILED' }, { status: 500 });
+        : 'Lỗi không xác định';
+    return NextResponse.json(
+      { error: message, code: isPaddleError ? 'PADDLE_OCR_FAILED' : 'VERIFY_PIPELINE_FAILED' },
+      { status: 500 }
+    );
   }
+}
+
+function parseClientOcr(value: FormDataEntryValue | null): OCRResult | null {
+  if (typeof value !== 'string' || !value.trim()) return null;
+
+  let parsed: Partial<OCRResult>;
+  try {
+    parsed = JSON.parse(value) as Partial<OCRResult>;
+  } catch {
+    throw new Error('Kết quả OCR gửi lên không phải JSON hợp lệ');
+  }
+
+  const text = typeof parsed.text === 'string' ? parsed.text.trim() : '';
+  if (!text || text.length > 50_000) {
+    throw new Error('Văn bản OCR rỗng hoặc vượt quá giới hạn');
+  }
+
+  const confidence = clampConfidence(parsed.confidence);
+  const detectedScript =
+    parsed.detectedScript === 'traditional' || parsed.detectedScript === 'mixed'
+      ? parsed.detectedScript
+      : 'simplified';
+  const wordBoxes = Array.isArray(parsed.wordBoxes)
+    ? parsed.wordBoxes.flatMap((box) => {
+        if (!box || typeof box.text !== 'string' || !box.bbox) return [];
+        const { x0, y0, x1, y1 } = box.bbox;
+        if (![x0, y0, x1, y1].every(Number.isFinite)) return [];
+        return [{
+          text: box.text,
+          confidence: clampConfidence(box.confidence),
+          bbox: { x0, y0, x1, y1 },
+        }];
+      })
+    : [];
+
+  return {
+    text,
+    confidence,
+    detectedScript,
+    language: typeof parsed.language === 'string' ? parsed.language : 'zh',
+    wordBoxes,
+  };
+}
+
+function clampConfidence(value: unknown): number {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.max(0, Math.min(1, number)) : 0;
 }

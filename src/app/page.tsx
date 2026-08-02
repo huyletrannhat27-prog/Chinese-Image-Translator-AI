@@ -100,7 +100,8 @@ export default function Home() {
 
   // Load history on mount
   useEffect(() => {
-    setHistory(HistoryStorage.load());
+    const frame = window.requestAnimationFrame(() => setHistory(HistoryStorage.load()));
+    return () => window.cancelAnimationFrame(frame);
   }, []);
 
   // Gắn stream sau khi cameraActive làm phần tử <video> xuất hiện trong DOM.
@@ -229,59 +230,53 @@ export default function Home() {
       const ocrResult = await recognizeChinese(file, (ocrProgress) => {
         setProgress(15 + Math.round(ocrProgress * 0.45));
       });
-      if (!ocrResult.text.trim()) {
-        throw new Error('Tesseract không nhận diện được chữ trong ảnh');
-      }
+      if (!ocrResult.text.trim()) throw new Error('Không nhận diện được chữ trong ảnh');
 
-      const translationFormData = new FormData();
-      translationFormData.append('text', ocrResult.text);
-      translationFormData.append('lines', JSON.stringify(ocrResult.regions?.map((region) => region.text) || []));
-      translationFormData.append('target', 'vi');
-      translationFormData.append('source', 'zh');
+      const verificationFormData = new FormData();
+      verificationFormData.append('target', 'vi');
+      verificationFormData.append('ocr', JSON.stringify({
+        ...ocrResult,
+        wordBoxes: ocrResult.regions?.map((region) => ({
+          text: region.text,
+          confidence: region.confidence,
+          bbox: region.bbox,
+        })),
+      }));
 
       setProgress(65);
-      const translateResponse = await fetch('/api/translate', {
+      const verifyResponse = await fetch('/api/verify', {
         method: 'POST',
-        body: translationFormData,
+        body: verificationFormData,
       });
-
-      if (!translateResponse.ok) {
-        const errorData = await translateResponse.json();
-        throw new Error(errorData.error || 'Translation failed');
+      const verifyData = await verifyResponse.json();
+      if (!verifyResponse.ok) {
+        throw new Error(verifyData.error || 'Không thể kiểm chứng OCR và bản dịch');
       }
 
-      const translateData = await translateResponse.json();
-      setProgress(85);
+      setProgress(90);
+      const translation = verifyData.translation;
+      const ocrRegions = ocrResult.regions;
+      const translatedRegions =
+        ocrRegions && translation.segments?.length === ocrRegions.length
+          ? translation.segments.map((segment: { translated: string }) => segment.translated)
+          : undefined;
       const imageDimensions = await getImageDimensions(file);
-      const ocrRegions = ocrResult.regions?.map((region) => ({
-        ...region,
-        bbox: {
-          x0: region.bbox.x0,
-          y0: region.bbox.y0,
-          x1: region.bbox.x1,
-          y1: region.bbox.y1,
-        },
-      }));
-      const translatedRegions = ocrRegions?.map((_, index) =>
-        translateData.translatedLines?.[index]
-        || translateData.segments?.[index]?.translated
-        || (index === 0 ? translateData.translation : '')
-      );
-
-      // Build result
       const resultData: TranslationResult = {
         id: `trans_${Date.now()}`,
         originalText: ocrResult.text,
-        translation: translateData.translation,
+        translation: translation.translation,
         detectedScript: ocrResult.detectedScript,
-        confidence: ocrResult.confidence,
-        segments: translateData.segments || [{ original: ocrResult.text, translated: translateData.translation }],
+        confidence: verifyData.accuracy.ocr.averageConfidence,
+        segments: translation.segments || [
+          { original: ocrResult.text, translated: translation.translation },
+        ],
         processingTime: Date.now() - startedAt,
         createdAt: new Date(),
-        regions: ocrRegions,
+        regions: translatedRegions ? ocrRegions : undefined,
         translatedRegions,
         imageWidth: imageDimensions.width,
         imageHeight: imageDimensions.height,
+        accuracy: verifyData.accuracy,
       };
 
       setResult(resultData);
@@ -623,19 +618,39 @@ export default function Home() {
             </div>
           )}
 
-          {/* Confidence */}
-          <div className="surface-card flex items-center gap-3 rounded-2xl px-4 py-3">
-            <span className="text-sm font-medium text-slate-500">Độ chính xác</span>
-            <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100">
-              <div
-                className="h-full rounded-full bg-emerald-500"
-                style={{ width: `${Math.round(result.confidence * 100)}%` }}
-              />
+          {/* Accuracy verification */}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="surface-card rounded-2xl px-4 py-3">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm font-medium text-slate-500">Độ tin cậy OCR</span>
+                <span className="text-sm font-bold text-emerald-600">
+                  {Math.round(result.confidence * 100)}%
+                </span>
+              </div>
+              <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
+                <div
+                  className="h-full rounded-full bg-emerald-500"
+                  style={{ width: `${Math.round(result.confidence * 100)}%` }}
+                />
+              </div>
             </div>
-            <span className="text-sm font-bold text-emerald-600">
-              {Math.round(result.confidence * 100)}%
-            </span>
+            {result.accuracy && (
+              <div className="surface-card rounded-2xl px-4 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-medium text-slate-500">Độ tương đồng bản dịch</span>
+                  <span className={`text-sm font-bold ${result.accuracy.translation.reliable ? 'text-emerald-600' : 'text-amber-600'}`}>
+                    {Math.round(result.accuracy.translation.similarityScore * 100)}%
+                  </span>
+                </div>
+                <p className="mt-2 text-xs text-slate-500">Ước lượng bằng dịch vòng; nên đối chiếu khi điểm thấp.</p>
+              </div>
+            )}
           </div>
+          {result.verificationWarning && (
+            <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              {result.verificationWarning}
+            </p>
+          )}
 
           {/* Script detection */}
           <div className="flex items-center gap-2 px-1">
