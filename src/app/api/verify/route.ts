@@ -73,8 +73,17 @@ export async function POST(req: NextRequest) {
     }
 
     // 2) Dịch bằng Gemini - chỉ gửi text đã OCR, không gửi lại ảnh
+    const textLines = ocrResult.text
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
     const translator = new GeminiTranslator(apiKey);
-    const translationResult = await translator.translate(ocrResult.text, target, 'zh');
+    const translationResult = await translator.translate(
+      ocrResult.text,
+      target,
+      'zh',
+      textLines.length ? textLines : undefined
+    );
 
     // 3) Xác định độ chính xác cho cả 2 bước
     const ocrAccuracy = evaluateOcrAccuracy(ocrResult);

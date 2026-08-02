@@ -7,6 +7,7 @@ export interface TranslationResult {
     original: string;
     translated: string;
   }>;
+  translatedLines?: string[];
   confidence: number;
 }
 
@@ -22,9 +23,10 @@ export class GeminiTranslator {
   async translate(
     text: string,
     target: string = 'vi',
-    source: string = 'zh'
+    source: string = 'zh',
+    lines?: string[]
   ): Promise<TranslationResult> {
-    const prompt = this.buildPrompt(text, target, source);
+    const prompt = this.buildPrompt(text, target, source, lines);
 
     try {
       const response = await this.genAI.models.generateContent({
@@ -51,9 +53,14 @@ export class GeminiTranslator {
     }
   }
 
-  private buildPrompt(text: string, target: string, source: string): string {
+  private buildPrompt(text: string, target: string, source: string, lines?: string[]): string {
     const targetLang = this.getLanguageName(target);
     const sourceLang = this.getLanguageName(source);
+    const lineInstruction = lines?.length
+      ? `\nDanh sách dòng OCR theo đúng thứ tự (bắt buộc trả translatedLines cùng ${lines.length} phần tử):\n${lines
+          .map((line, index) => `${index + 1}. ${line}`)
+          .join('\n')}`
+      : '';
 
     return `Bạn là một dịch giả chuyên nghiệp với 10 năm kinh nghiệm dịch ${sourceLang} sang ${targetLang}.
 
@@ -69,11 +76,12 @@ CHỈ TRẢ JSON HỢP LỆ VỚI CẤU TRÚC:
   "translation": "bản dịch hoàn chỉnh",
   "script": "simplified | traditional | mixed",
   "segments": [{"original": "câu gốc", "translated": "câu dịch"}],
+  "translatedLines": ["bản dịch dòng 1", "bản dịch dòng 2"],
   "confidence": 0.95
 }
 
 VĂN BẢN CẦN DỊCH (${sourceLang}):
-${text}
+${text}${lineInstruction}
 
 NGÔN NGỮ ĐÍCH: ${targetLang}`;
   }
@@ -111,6 +119,9 @@ NGÔN NGỮ ĐÍCH: ${targetLang}`;
           translation: parsed.translation || content,
           detectedScript: parsed.script || 'simplified',
           segments: parsed.segments || [{ original: originalText, translated: parsed.translation || content }],
+          translatedLines: Array.isArray(parsed.translatedLines)
+            ? parsed.translatedLines.filter((line: unknown): line is string => typeof line === 'string')
+            : undefined,
           confidence: parsed.confidence || 0.9,
         };
       }

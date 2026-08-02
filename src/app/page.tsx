@@ -284,8 +284,13 @@ export default function Home() {
 
         setProgress(90);
         const translation = verifyData.translation;
+        const translatedLines = Array.isArray(translation.translatedLines)
+          ? translation.translatedLines
+          : undefined;
         const translatedRegions =
-          ocrRegions && translation.segments?.length === ocrRegions.length
+          ocrRegions && translatedLines && translatedLines.length === ocrRegions.length
+            ? translatedLines
+            : ocrRegions && translation.segments?.length === ocrRegions.length
             ? translation.segments.map((segment: { translated: string }) => segment.translated)
             : undefined;
         const imageDimensions = await getImageDimensions(file);
@@ -298,6 +303,7 @@ export default function Home() {
           segments: translation.segments || [
             { original: ocrResult.text, translated: translation.translation },
           ],
+          translatedLines,
           processingTime: Date.now() - startedAt,
           createdAt: new Date(),
           regions: translatedRegions ? ocrRegions : undefined,

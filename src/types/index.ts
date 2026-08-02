@@ -25,6 +25,7 @@ export interface TranslationResult {
   // Optional vì item cũ trong history hoặc bản dịch mock có thể không có.
   regions?: OCRRegion[];
   translatedRegions?: string[];
+  translatedLines?: string[];
   imageWidth?: number;
   imageHeight?: number;
   accuracy?: AccuracyReport;
