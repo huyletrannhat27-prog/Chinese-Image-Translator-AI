@@ -19,7 +19,8 @@ import {
 } from 'lucide-react';
 import { TranslationResult } from '@/types';
 import { HistoryStorage } from '@/lib/history/storage';
-import { recognizeChinese } from '@/lib/ocr/tesseract';
+// Use PaddleOCR (server-side) by default: client posts image to /api/ocr
+
 
 async function getImageDimensions(file: File): Promise<{ width: number; height: number }> {
   if ('createImageBitmap' in window) {
@@ -226,74 +227,89 @@ export default function Home() {
     const startedAt = Date.now();
 
     try {
-      setProgress(15);
-      const ocrResult = await recognizeChinese(file, (ocrProgress) => {
-        setProgress(15 + Math.round(ocrProgress * 0.45));
-      });
-      if (!ocrResult.text.trim()) throw new Error('Không nhận diện được chữ trong ảnh');
+        setProgress(20);
 
-      const verificationFormData = new FormData();
-      verificationFormData.append('target', 'vi');
-      verificationFormData.append('ocr', JSON.stringify({
-        ...ocrResult,
-        wordBoxes: ocrResult.regions?.map((region) => ({
-          text: region.text,
-          confidence: region.confidence,
-          bbox: region.bbox,
-        })),
-      }));
+        // Send image to server-side PaddleOCR route
+        const form = new FormData();
+        form.append('image', file);
+        const ocrResp = await fetch('/api/ocr', { method: 'POST', body: form });
+        const ocrJson = await ocrResp.json();
+        if (!ocrResp.ok) {
+          throw new Error(ocrJson?.error || 'OCR thất bại');
+        }
+        const ocrResult = ocrJson as import('@/types').OCRResult;
+        if (!ocrResult.text || !ocrResult.text.trim()) throw new Error('Không nhận diện được chữ trong ảnh');
 
-      setProgress(65);
-      const verifyResponse = await fetch('/api/verify', {
-        method: 'POST',
-        body: verificationFormData,
-      });
-      const verifyData = await verifyResponse.json();
-      if (!verifyResponse.ok) {
-        throw new Error(verifyData.error || 'Không thể kiểm chứng OCR và bản dịch');
+        // Normalize regions: server may return wordBoxes (Paddle) or regions (tesseract)
+        const ocrRegions:
+          | import('@/types').OCRRegion[]
+          | undefined =
+          ocrResult.regions ??
+          (Array.isArray(ocrResult.wordBoxes)
+                      ? (ocrResult.wordBoxes as Array<{ text: string; confidence: number; bbox: { x0: number; y0: number; x1: number; y1: number } }>).map((wb) => ({ text: wb.text, confidence: wb.confidence, bbox: wb.bbox, lineCount: 1 }))
+            : undefined);
+
+        const verificationFormData = new FormData();
+        verificationFormData.append('target', 'vi');
+        verificationFormData.append(
+          'ocr',
+          JSON.stringify({
+            ...ocrResult,
+            regions: ocrRegions,
+                    wordBoxes: ocrResult.wordBoxes ?? (ocrRegions ? ocrRegions.map((r: import('@/types').OCRRegion) => ({ text: r.text, confidence: r.confidence, bbox: r.bbox })) : []),
+          })
+        );
+
+        setProgress(65);
+        const verifyResponse = await fetch('/api/verify', {
+          method: 'POST',
+          body: verificationFormData,
+        });
+        const verifyData = await verifyResponse.json();
+        if (!verifyResponse.ok) {
+          throw new Error(verifyData.error || 'Không thể kiểm chứng OCR và bản dịch');
+        }
+
+        setProgress(90);
+        const translation = verifyData.translation;
+        const translatedRegions =
+          ocrRegions && translation.segments?.length === ocrRegions.length
+            ? translation.segments.map((segment: { translated: string }) => segment.translated)
+            : undefined;
+        const imageDimensions = await getImageDimensions(file);
+        const resultData: TranslationResult = {
+          id: `trans_${Date.now()}`,
+          originalText: ocrResult.text,
+          translation: translation.translation,
+          detectedScript: ocrResult.detectedScript,
+          confidence: verifyData.accuracy.ocr.averageConfidence,
+          segments: translation.segments || [
+            { original: ocrResult.text, translated: translation.translation },
+          ],
+          processingTime: Date.now() - startedAt,
+          createdAt: new Date(),
+          regions: translatedRegions ? ocrRegions : undefined,
+          translatedRegions,
+          imageWidth: imageDimensions.width,
+          imageHeight: imageDimensions.height,
+          accuracy: verifyData.accuracy,
+        };
+
+        setResult(resultData);
+        setProgress(100);
+
+        // Save to history
+        const updatedHistory = HistoryStorage.addItem(resultData);
+        setHistory(updatedHistory);
+
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Có lỗi xảy ra khi xử lý');
+        console.error('Processing error:', err);
+      } finally {
+        setIsProcessing(false);
+        setProgress(0);
       }
-
-      setProgress(90);
-      const translation = verifyData.translation;
-      const ocrRegions = ocrResult.regions;
-      const translatedRegions =
-        ocrRegions && translation.segments?.length === ocrRegions.length
-          ? translation.segments.map((segment: { translated: string }) => segment.translated)
-          : undefined;
-      const imageDimensions = await getImageDimensions(file);
-      const resultData: TranslationResult = {
-        id: `trans_${Date.now()}`,
-        originalText: ocrResult.text,
-        translation: translation.translation,
-        detectedScript: ocrResult.detectedScript,
-        confidence: verifyData.accuracy.ocr.averageConfidence,
-        segments: translation.segments || [
-          { original: ocrResult.text, translated: translation.translation },
-        ],
-        processingTime: Date.now() - startedAt,
-        createdAt: new Date(),
-        regions: translatedRegions ? ocrRegions : undefined,
-        translatedRegions,
-        imageWidth: imageDimensions.width,
-        imageHeight: imageDimensions.height,
-        accuracy: verifyData.accuracy,
-      };
-
-      setResult(resultData);
-      setProgress(100);
-
-      // Save to history
-      const updatedHistory = HistoryStorage.addItem(resultData);
-      setHistory(updatedHistory);
-
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Có lỗi xảy ra khi xử lý');
-      console.error('Processing error:', err);
-    } finally {
-      setIsProcessing(false);
-      setProgress(0);
-    }
-  };
+    };
 
   // Copy text to clipboard
   const copyText = async (text: string) => {

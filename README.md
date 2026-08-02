@@ -16,7 +16,7 @@
 ## Tính năng
 
 - Chụp ảnh trực tiếp bằng camera hoặc chọn ảnh từ thiết bị, tối đa 10 MB.
-- Nhận dạng chữ Trung giản thể, phồn thể và văn bản Latin bằng Tesseract.js.
+- Nhận dạng chữ Trung giản thể, phồn thể và văn bản Latin bằng PaddleOCR (server) theo mặc định; Tesseract.js được dùng làm fallback trên trình duyệt nếu môi trường deploy không có Python/Paddle.
 - Dịch văn bản OCR sang tiếng Việt bằng Google Gemini.
 - Ước lượng độ tin cậy OCR từ confidence của từng vùng chữ.
 - Kiểm tra bản dịch bằng dịch vòng Việt → Trung và hệ số tương đồng Dice.
@@ -54,7 +54,7 @@ Luồng trên được dùng trên giao diện để phản hồi nhanh và depl
 |---|---|---|
 | Web | Next.js 16, React 19, TypeScript | Giao diện và API routes |
 | UI | Tailwind CSS, Lucide React | Giao diện responsive |
-| OCR chính | Tesseract.js | OCR trên trình duyệt, confidence và bbox |
+| OCR chính | PaddleOCR (server) + Tesseract.js (fallback) | PaddleOCR (server-side, chính); Tesseract.js dùng làm fallback nhanh trên trình duyệt |
 | OCR tùy chọn | PaddleOCR, Python | OCR self-host và kiểm thử đối chiếu |
 | Dịch | Google Gemini API | Dịch Trung → Việt và dịch vòng |
 | Xử lý ảnh server | Sharp | Xoay, resize và nén ảnh cho PaddleOCR/API vision |
