@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import {
   Camera,
+  Aperture,
   Upload,
   History,
   Copy,
@@ -18,8 +19,7 @@ import {
 } from 'lucide-react';
 import { TranslationResult } from '@/types';
 import { HistoryStorage } from '@/lib/history/storage';
-
-type AIProvider = 'gemini' | 'openai' | 'claude';
+import { recognizeChinese } from '@/lib/ocr/tesseract';
 
 async function getImageDimensions(file: File): Promise<{ width: number; height: number }> {
   if ('createImageBitmap' in window) {
@@ -53,13 +53,13 @@ export default function Home() {
   const [progress, setProgress] = useState(0);
   const [history, setHistory] = useState<TranslationResult[]>([]);
   const [showHistory, setShowHistory] = useState(false);
-  const [provider, setProvider] = useState<AIProvider>('gemini');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const fallbackCameraInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
+  const [isCapturing, setIsCapturing] = useState(false);
   const streamRef = useRef<MediaStream | null>(null);
   const previewImgRef = useRef<HTMLImageElement>(null);
   const [overlaySize, setOverlaySize] = useState<{ width: number; height: number } | null>(null);
@@ -155,6 +155,7 @@ export default function Home() {
     streamRef.current = null;
     if (videoRef.current) videoRef.current.srcObject = null;
     setCameraReady(false);
+    setIsCapturing(false);
     setCameraActive(false);
   };
 
@@ -171,18 +172,25 @@ export default function Home() {
       canvas.height = video.videoHeight;
       const ctx = canvas.getContext('2d');
       if (ctx) {
+        setIsCapturing(true);
+        setError(null);
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
-        setImage(dataUrl);
+        canvas.toBlob((blob) => {
+          if (!blob) {
+            setIsCapturing(false);
+            setError('Không thể tạo ảnh chụp. Vui lòng thử lại.');
+            return;
+          }
 
-        // Convert dataUrl to File
-        fetch(dataUrl)
-          .then(res => res.blob())
-          .then(blob => {
-            const file = new File([blob], `photo_${Date.now()}.jpg`, { type: 'image/jpeg' });
-            stopCamera();
-            processImage(file);
-          });
+          const file = new File([blob], `photo_${Date.now()}.jpg`, { type: 'image/jpeg' });
+          const reader = new FileReader();
+          reader.onload = (event) => setImage(event.target?.result as string);
+          reader.readAsDataURL(file);
+
+          // Dừng camera ngay sau khi đã lấy được frame, rồi xử lý ảnh vừa chụp.
+          stopCamera();
+          void processImage(file);
+        }, 'image/jpeg', 0.95);
       }
     }
   };
@@ -209,8 +217,6 @@ export default function Home() {
     }
   };
 
-  // AI Vision nhận diện chữ và dịch trong cùng một request, không còn phụ
-  // thuộc vào Tesseract hay gói ngôn ngữ tải từ CDN.
   const processImage = async (file: File) => {
     setIsProcessing(true);
     setError(null);
@@ -219,18 +225,22 @@ export default function Home() {
     const startedAt = Date.now();
 
     try {
-      setProgress(30);
+      setProgress(15);
+      const ocrResult = await recognizeChinese(file, (ocrProgress) => {
+        setProgress(15 + Math.round(ocrProgress * 0.45));
+      });
+      if (!ocrResult.text.trim()) {
+        throw new Error('Tesseract không nhận diện được chữ trong ảnh');
+      }
+
       const translationFormData = new FormData();
-      translationFormData.append('image', file);
-      translationFormData.append('text', '');
+      translationFormData.append('text', ocrResult.text);
+      translationFormData.append('lines', JSON.stringify(ocrResult.regions?.map((region) => region.text) || []));
       translationFormData.append('target', 'vi');
       translationFormData.append('source', 'zh');
 
-      const endpoint = provider === 'gemini'
-        ? '/api/translate'
-        : `/api/translate/${provider}`;
-
-      const translateResponse = await fetch(endpoint, {
+      setProgress(65);
+      const translateResponse = await fetch('/api/translate', {
         method: 'POST',
         body: translationFormData,
       });
@@ -243,43 +253,33 @@ export default function Home() {
       const translateData = await translateResponse.json();
       setProgress(85);
       const imageDimensions = await getImageDimensions(file);
-
-      // Bbox AI Vision dùng thang 0..1000; đổi sang pixel ảnh gốc để overlay.
-      const visionRegions = Array.isArray(translateData.overlayRegions)
-        ? translateData.overlayRegions.map((region: {
-            original: string;
-            translated: string;
-            orientation?: 'horizontal' | 'vertical';
-            bbox: { x0: number; y0: number; x1: number; y1: number };
-          }) => ({
-            text: region.original,
-            confidence: translateData.confidence || 0.9,
-            orientation: region.orientation || 'horizontal',
-            lineCount: Math.max(1, region.original.split(/\r?\n/).length),
-            bbox: {
-              x0: region.bbox.x0 * imageDimensions.width / 1000,
-              y0: region.bbox.y0 * imageDimensions.height / 1000,
-              x1: region.bbox.x1 * imageDimensions.width / 1000,
-              y1: region.bbox.y1 * imageDimensions.height / 1000,
-            },
-          }))
-        : undefined;
-      const visionTranslations = Array.isArray(translateData.overlayRegions)
-        ? translateData.overlayRegions.map((region: { translated: string }) => region.translated)
-        : undefined;
+      const ocrRegions = ocrResult.regions?.map((region) => ({
+        ...region,
+        bbox: {
+          x0: region.bbox.x0,
+          y0: region.bbox.y0,
+          x1: region.bbox.x1,
+          y1: region.bbox.y1,
+        },
+      }));
+      const translatedRegions = ocrRegions?.map((_, index) =>
+        translateData.translatedLines?.[index]
+        || translateData.segments?.[index]?.translated
+        || (index === 0 ? translateData.translation : '')
+      );
 
       // Build result
       const resultData: TranslationResult = {
         id: `trans_${Date.now()}`,
-        originalText: translateData.correctedText || '',
+        originalText: ocrResult.text,
         translation: translateData.translation,
-        detectedScript: translateData.detectedScript || 'simplified',
-        confidence: translateData.confidence || 0.85,
-        segments: translateData.segments || [{ original: translateData.correctedText || '', translated: translateData.translation }],
+        detectedScript: ocrResult.detectedScript,
+        confidence: ocrResult.confidence,
+        segments: translateData.segments || [{ original: ocrResult.text, translated: translateData.translation }],
         processingTime: Date.now() - startedAt,
         createdAt: new Date(),
-        regions: visionRegions,
-        translatedRegions: visionTranslations,
+        regions: ocrRegions,
+        translatedRegions,
         imageWidth: imageDimensions.width,
         imageHeight: imageDimensions.height,
       };
@@ -396,19 +396,12 @@ export default function Home() {
         <div className="mx-auto max-w-3xl space-y-4">
           <div className="surface-card flex flex-col gap-2 rounded-2xl px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="text-sm font-bold text-slate-900">AI nhận diện & dịch</p>
-              <p className="text-xs text-slate-500">Đọc ảnh trực tiếp, không dùng Tesseract</p>
+              <p className="text-sm font-bold text-slate-900">Tesseract OCR + Gemini dịch thuật</p>
+              <p className="text-xs text-slate-500">Tesseract đọc chữ Trung, Gemini dịch sang tiếng Việt</p>
             </div>
-            <select
-              value={provider}
-              onChange={(event) => setProvider(event.target.value as AIProvider)}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-              aria-label="Chọn nhà cung cấp AI"
-            >
-              <option value="gemini">Google Gemini</option>
-              <option value="openai">OpenAI</option>
-              <option value="claude">Anthropic Claude</option>
-            </select>
+            <span className="rounded-xl bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700">
+              Gemini API
+            </span>
           </div>
           {/* Camera */}
           <div className="camera-card relative aspect-[4/3] overflow-hidden rounded-[1.75rem] bg-slate-950 sm:aspect-[16/9]">
@@ -420,20 +413,29 @@ export default function Home() {
                   playsInline
                   muted
                   onLoadedMetadata={() => setCameraReady(true)}
+                  onCanPlay={() => setCameraReady(true)}
+                  onPlaying={() => setCameraReady(true)}
                   className="h-full w-full object-cover"
                 />
-                <div className="absolute inset-x-0 bottom-6 flex items-center justify-center gap-4">
+                <div className="pointer-events-none absolute inset-x-0 top-4 z-20 flex justify-center px-4">
+                  <span className="rounded-full bg-slate-950/65 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur-md">
+                    Căn chữ vào khung rồi bấm Chụp ảnh
+                  </span>
+                </div>
+                <div className="absolute inset-x-0 bottom-0 z-30 flex items-center justify-center gap-3 bg-gradient-to-t from-slate-950/90 via-slate-950/55 to-transparent px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-12">
                   <button
                     onClick={capturePhoto}
-                    disabled={!cameraReady}
+                    disabled={!cameraReady || isCapturing}
                     aria-label="Chụp ảnh"
-                    className="rounded-full border-[3px] border-white bg-white/20 p-2 shadow-xl backdrop-blur-md transition hover:scale-105 disabled:cursor-wait disabled:opacity-50"
+                    className="inline-flex min-h-12 items-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-extrabold text-indigo-700 shadow-xl transition hover:scale-105 disabled:cursor-wait disabled:opacity-60"
                   >
-                    <div className="h-12 w-12 rounded-full bg-white" />
+                    <Aperture size={22} />
+                    {isCapturing ? 'Đang chụp...' : cameraReady ? 'Chụp ảnh' : 'Đang mở camera...'}
                   </button>
                   <button
                     onClick={stopCamera}
-                    className="rounded-full bg-slate-950/65 px-4 py-2 text-sm font-semibold text-white backdrop-blur-md"
+                    disabled={isCapturing}
+                    className="min-h-12 rounded-full border border-white/40 bg-slate-950/65 px-4 py-3 text-sm font-semibold text-white backdrop-blur-md disabled:opacity-50"
                   >
                     Đóng
                   </button>

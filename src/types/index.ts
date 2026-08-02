@@ -50,7 +50,7 @@ export interface TranslateRequest {
   text: string;
   target: string;
   source?: string;
-  provider?: 'gemini' | 'openai' | 'claude';
+  provider?: 'gemini';
 }
 
 // Translation response type
@@ -82,7 +82,7 @@ export interface UserSettings {
   targetLanguage: 'vi' | 'en' | 'ja' | 'ko' | 'zh';
   sourceLanguage: 'zh' | 'ja' | 'ko' | 'en';
   ocrLanguage: 'chi_sim' | 'chi_tra' | 'chi_sim+chi_tra';
-  provider: 'gemini' | 'openai' | 'claude';
+  provider: 'gemini';
   autoProcess: boolean;
   saveHistory: boolean;
   compressionQuality: number; // 0-100

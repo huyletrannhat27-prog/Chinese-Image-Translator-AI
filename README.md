@@ -2,7 +2,7 @@
 
 [![Next.js](https://img.shields.io/badge/Next.js_14-000000?style=flat&logo=next.js&logoColor=white)](https://nextjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Vision OCR](https://img.shields.io/badge/OCR-AI_Vision-4F46E5?style=flat)](#)
+[![Tesseract OCR](https://img.shields.io/badge/OCR-Tesseract-4F46E5?style=flat)](#)
 [![Gemini](https://img.shields.io/badge/Gemini-8E75B2?style=flat&logo=google&logoColor=white)](https://deepmind.google/technologies/gemini/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
@@ -20,10 +20,17 @@
 - **Lịch sử** - Lưu lại các bản dịch trong trình duyệt (localStorage), xem lại/xoá/export JSON
 - **Tải kết quả** - Export bản dịch ra file .txt
 
+<<<<<<< HEAD
 ### Điểm nổi bật
 - **Không cần đăng nhập** - Dùng ngay khi mở trang
 - **Dịch chính xác** - Chọn Google Gemini, OpenAI hoặc Anthropic Claude ngay trên giao diện
 - **Bảo mật** - Ảnh xử lý theo request, không lưu trữ vĩnh viễn trên server
+=======
+### ⚡ Điểm nổi bật
+- ✅ **Không cần đăng nhập** - Dùng ngay khi mở trang
+- ✅ **Dịch chính xác** - Tesseract OCR nhận dạng chữ, Gemini API dịch sang tiếng Việt
+- ✅ **Bảo mật** - Ảnh xử lý theo request, không lưu trữ vĩnh viễn trên server
+>>>>>>> origin/main
 
 ---
 
@@ -34,7 +41,8 @@
 | **Framework** | Next.js 14 (App Router) | Web app, API routes |
 | **Ngôn ngữ** | TypeScript | Type-safe |
 | **UI** | Tailwind CSS + Radix UI | Giao diện responsive |
-| **OCR + dịch** | Gemini Vision / OpenAI Vision / Claude Vision | Đọc trực tiếp ảnh và dịch trong một lần gọi |
+| **OCR** | Tesseract.js + `chi_sim`/`chi_tra`/`eng` | Nhận dạng chữ Trung/Latin, confidence và bbox |
+| **Dịch thuật** | Google Gemini API (`gemini-3.5-flash`) | Dịch text OCR Trung → Việt, trả JSON/segments |
 | **Tiền xử lý ảnh** | Sharp | Xoay ảnh theo EXIF, resize và tối ưu payload |
 | **Lịch sử** | localStorage (client) | Không cần database |
 
@@ -47,7 +55,13 @@ Chụp/Upload ảnh
       ↓
 Tiền xử lý (Sharp: xoay đúng chiều, resize, nén ảnh)
       ↓
+<<<<<<< HEAD
 AI Vision đã chọn: OCR + phát hiện hệ chữ + dịch + định vị vùng chữ
+=======
+🔎 Tesseract.js: OCR chữ Trung + confidence + bbox
+      ↓
+🤖 Gemini API: dịch text OCR Trung → Việt
+>>>>>>> origin/main
       ↓
 Lưu lịch sử (localStorage) + hiển thị kết quả
 ```
@@ -115,8 +129,13 @@ npm run start
 1. **Mở trang** - Không cần đăng nhập, dùng ngay.
 2. **Chụp/Upload ảnh** - Nhấn "Mở Camera" để chụp, hoặc "Chọn ảnh từ máy".
 3. **Chọn AI và đợi xử lý** - Gemini, OpenAI hoặc Claude sẽ đọc ảnh rồi dịch trực tiếp.
+<<<<<<< HEAD
 4. **Xem kết quả** - Văn bản gốc, bản dịch tiếng Việt, độ chính xác, loại chữ (giản thể/phồn thể).
 5. **Lưu & xem lịch sử** - Tự động lưu vào lịch sử; nhấn biểu tượng lịch sử để mở, hoặc vào `/history`.
+=======
+4. **Xem kết quả** - Văn bản OCR, bản dịch tiếng Việt, độ chính xác, loại chữ (giản thể/phồn thể).
+5. **Lưu & xem lịch sử** - Tự động lưu vào lịch sử; nhấn biểu tượng 📋 để mở, hoặc vào `/history`.
+>>>>>>> origin/main
 
 ---
 
@@ -124,15 +143,25 @@ npm run start
 
 Xem chi tiết từng phase tại [`_docs/02_phases.md`](_docs/02_phases.md). Tóm tắt:
 
+<<<<<<< HEAD
 - (Hoàn thành) **Phase 1 — Foundation**: Next.js + Tailwind, upload/camera, API structure cơ bản
 - (Hoàn thành) **Phase 2 — OCR**: AI Vision OCR, tiền xử lý ảnh với Sharp
 - (Hoàn thành) **Phase 3 — Dịch thuật nâng cao**: chọn provider Gemini/OpenAI/Claude trên UI
 - (Đang làm) **Phase 4 — Tối ưu**: rate limiting, cache, retry mechanism đã xong; còn tooltip hướng dẫn
 - (Đang làm) **Phase 5 — Lịch sử nâng cao**: export CSV/PDF, batch nhiều ảnh
 - (Chưa bắt đầu) **Phase 6 — Auth & Admin**: đăng nhập, quản lý tier người dùng
+=======
+- ✅ **Phase 1 — Foundation**: Next.js + Tailwind, upload/camera, API structure cơ bản
+- ✅ **Phase 2 — OCR**: Tesseract.js với model tiếng Trung giản thể/phồn thể
+- ✅ **Phase 3 — Dịch thuật**: Gemini API dịch text OCR và trả segments
+- 🔄 **Phase 4 — Tối ưu**: rate limiting, cache, retry mechanism
+- 🔄 **Phase 5 — Lịch sử nâng cao**: export CSV/PDF, batch nhiều ảnh
+- ⬜ **Phase 6 — Auth & Admin**: đăng nhập, quản lý tier người dùng
+>>>>>>> origin/main
 
 ## Tài liệu nghiên cứu
 
+- [Tài liệu thuyết trình OCR và dịch thuật](_docs/08_thuyet_trinh_ocr_va_dich_thuat.md) — bản cô đọng để thuyết trình, so sánh công cụ và giải thích lựa chọn kiến trúc.
 - [Công cụ OCR](_docs/04_ocr_tools.md) — các lựa chọn OCR offline, on-device, cloud và AI Vision; ưu/nhược điểm và công cụ dự án đang dùng.
 - [Công cụ dịch thuật](_docs/05_translation_tools.md) — so sánh NMT, dịch offline/self-host và LLM đa phương thức.
 - [Camera realtime và giảm độ trễ](_docs/06_realtime_camera_tools.md) — công cụ chụp/stream frame, nguyên nhân gây trễ và kiến trúc realtime đề xuất.
