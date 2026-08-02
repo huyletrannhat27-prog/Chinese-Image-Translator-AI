@@ -20,6 +20,7 @@ import {
 import { TranslationResult } from '@/types';
 import { HistoryStorage } from '@/lib/history/storage';
 // Use PaddleOCR (server-side) by default: client posts image to /api/ocr
+import { recognizeChinese } from '@/lib/ocr/tesseract';
 
 
 async function getImageDimensions(file: File): Promise<{ width: number; height: number }> {
@@ -232,22 +233,31 @@ export default function Home() {
         // Send image to server-side PaddleOCR route
         const form = new FormData();
         form.append('image', file);
-        const ocrResp = await fetch('/api/ocr', { method: 'POST', body: form });
-        const ocrJson = await ocrResp.json();
-        if (!ocrResp.ok) {
-          throw new Error(ocrJson?.error || 'OCR thất bại');
-        }
-        const ocrResult = ocrJson as import('@/types').OCRResult;
-        if (!ocrResult.text || !ocrResult.text.trim()) throw new Error('Không nhận diện được chữ trong ảnh');
+        let ocrResult: import('@/types').OCRResult | null = null;
+        let ocrRegions: import('@/types').OCRRegion[] | undefined = undefined;
 
-        // Normalize regions: server may return wordBoxes (Paddle) or regions (tesseract)
-        const ocrRegions:
-          | import('@/types').OCRRegion[]
-          | undefined =
-          ocrResult.regions ??
-          (Array.isArray(ocrResult.wordBoxes)
-                      ? (ocrResult.wordBoxes as Array<{ text: string; confidence: number; bbox: { x0: number; y0: number; x1: number; y1: number } }>).map((wb) => ({ text: wb.text, confidence: wb.confidence, bbox: wb.bbox, lineCount: 1 }))
-            : undefined);
+        // Try server-side PaddleOCR first
+        try {
+          const ocrResp = await fetch('/api/ocr', { method: 'POST', body: form });
+          const ocrJson = await ocrResp.json();
+          if (!ocrResp.ok) throw new Error(ocrJson?.error || 'OCR thất bại');
+          ocrResult = ocrJson as import('@/types').OCRResult;
+          if (!ocrResult.text || !ocrResult.text.trim()) throw new Error('Không nhận diện được chữ trong ảnh');
+
+          ocrRegions =
+            ocrResult.regions ??
+            (Array.isArray(ocrResult.wordBoxes)
+              ? (ocrResult.wordBoxes as Array<{ text: string; confidence: number; bbox: { x0: number; y0: number; x1: number; y1: number } }>).map((wb) => ({ text: wb.text, confidence: wb.confidence, bbox: wb.bbox, lineCount: 1 }))
+              : undefined);
+        } catch (serverOcrErr) {
+          // Server OCR failed — fallback to client-side Tesseract
+          console.warn('PaddleOCR failed, falling back to Tesseract:', serverOcrErr);
+          setProgress(25);
+          const clientOcr = await recognizeChinese(file, (p) => setProgress(15 + Math.round(p * 0.45)));
+          ocrResult = clientOcr as import('@/types').OCRResult;
+          ocrRegions = clientOcr.regions;
+          if (!ocrResult.text || !ocrResult.text.trim()) throw new Error('Không nhận diện được chữ trong ảnh (fallback)');
+        }
 
         const verificationFormData = new FormData();
         verificationFormData.append('target', 'vi');
@@ -407,8 +417,8 @@ export default function Home() {
         <div className="mx-auto max-w-3xl space-y-4">
           <div className="surface-card flex flex-col gap-2 rounded-2xl px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="text-sm font-bold text-slate-900">Tesseract OCR + Gemini dịch thuật</p>
-              <p className="text-xs text-slate-500">Tesseract đọc chữ Trung, Gemini dịch sang tiếng Việt</p>
+              <p className="text-sm font-bold text-slate-900">PaddleOCR (server) + Gemini dịch thuật</p>
+                            <p className="text-xs text-slate-500">PaddleOCR nhận diện chữ Trung trên server; Tesseract fallback trên thiết bị nếu cần. Gemini dịch sang tiếng Việt</p>
             </div>
             <span className="rounded-xl bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700">
               Gemini API
