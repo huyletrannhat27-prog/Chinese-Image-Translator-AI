@@ -229,13 +229,14 @@ export default function Home() {
 
     try {
         setProgress(20);
-
+ 
         // Send image to server-side PaddleOCR route
         const form = new FormData();
         form.append('image', file);
         let ocrResult: import('@/types').OCRResult | null = null;
         let ocrRegions: import('@/types').OCRRegion[] | undefined = undefined;
-
+        let usedFallback = false;
+ 
         // Try server-side PaddleOCR first
         try {
           const ocrResp = await fetch('/api/ocr', { method: 'POST', body: form });
@@ -243,7 +244,7 @@ export default function Home() {
           if (!ocrResp.ok) throw new Error(ocrJson?.error || 'OCR thất bại');
           ocrResult = ocrJson as import('@/types').OCRResult;
           if (!ocrResult.text || !ocrResult.text.trim()) throw new Error('Không nhận diện được chữ trong ảnh');
-
+ 
           ocrRegions =
             ocrResult.regions ??
             (Array.isArray(ocrResult.wordBoxes)
@@ -252,6 +253,7 @@ export default function Home() {
         } catch (serverOcrErr) {
           // Server OCR failed — fallback to client-side Tesseract
           console.warn('PaddleOCR failed, falling back to Tesseract:', serverOcrErr);
+          usedFallback = true;
           setProgress(25);
           const clientOcr = await recognizeChinese(file, (p) => setProgress(15 + Math.round(p * 0.45)));
           ocrResult = clientOcr as import('@/types').OCRResult;
@@ -303,6 +305,9 @@ export default function Home() {
           imageWidth: imageDimensions.width,
           imageHeight: imageDimensions.height,
           accuracy: verifyData.accuracy,
+          verificationWarning: usedFallback
+            ? 'PaddleOCR không khả dụng, đã dùng Tesseract fallback. Kết quả có thể kém chính xác hơn.'
+            : undefined,
         };
 
         setResult(resultData);

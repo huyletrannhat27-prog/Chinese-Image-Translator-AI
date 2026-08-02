@@ -55,27 +55,20 @@ export class GeminiTranslator {
     const targetLang = this.getLanguageName(target);
     const sourceLang = this.getLanguageName(source);
 
-    return `Bạn là một dịch giả chuyên nghiệp với 10 năm kinh nghiệm dịch ${sourceLang} - ${targetLang}.
+    return `Bạn là một dịch giả chuyên nghiệp với 10 năm kinh nghiệm dịch ${sourceLang} sang ${targetLang}.
 
 QUY TẮC DỊCH:
-1. Dịch chính xác, giữ nguyên ý nghĩa và ngữ cảnh
-2. Thành ngữ: tìm thành ngữ tương đương trong ${targetLang}
-3. Văn phong: tự nhiên, không máy móc
-4. Phân biệt: biết cách tách các cụm từ khi văn bản lộn xộn
-5. Chữ viết tay: đoán chữ nếu OCR sai
+1. Dịch đúng và đầy đủ, không tóm tắt.
+2. Giữ nguyên ý nghĩa, danh từ riêng, số, đơn vị và ngữ cảnh.
+3. Văn phong tự nhiên, tránh dịch máy móc.
+4. Nếu văn bản lộn xộn, hãy nhóm các cụm liên quan và dịch theo logic.
+5. KHÔNG cung cấp lời giải thích, chỉ trả kết quả dịch.
 
-XỬ LÝ VĂN BẢN LỘN XỘN:
-- Nếu văn bản có nhiều dòng lộn xộn, hãy sắp xếp theo logic
-- Phát hiện các cụm từ liên quan và nhóm lại
-- Bỏ qua các từ/cụm từ không liên quan
-
-ĐẦU RA JSON:
+CHỈ TRẢ JSON HỢP LỆ VỚI CẤU TRÚC:
 {
-  "translation": "Bản dịch hoàn chỉnh sang ${targetLang}",
+  "translation": "bản dịch hoàn chỉnh",
   "script": "simplified | traditional | mixed",
-  "segments": [
-    {"original": "câu gốc", "translated": "câu dịch"}
-  ],
+  "segments": [{"original": "câu gốc", "translated": "câu dịch"}],
   "confidence": 0.95
 }
 
