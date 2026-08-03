@@ -28,6 +28,13 @@ COPY . .
 RUN python3 -m pip install --upgrade pip setuptools wheel && \
     if [ -f scripts/requirements-ocr.txt ]; then python3 -m pip install -r scripts/requirements-ocr.txt; fi
 
+# Tải sẵn model PaddleOCR ngay lúc build image, KHÔNG để tải lúc chạy thật.
+# Lý do: PaddleOCR tự tải model (~100MB+) ở lần chạy đầu tiên; trên Render free
+# tier, disk không được giữ lâu dài giữa các lần cold start, nên mỗi lần "thức
+# dậy" có thể phải tải lại - dễ timeout/lỗi và khiến app âm thầm rớt xuống
+# Tesseract.js. Chạy 1 lần ở đây để model được đóng gói sẵn trong image.
+RUN python3 scripts/paddle_ocr.py assets/icon.png || true
+
 # Build Next.js app
 RUN npm run build
 
