@@ -45,8 +45,23 @@ export class GeminiTranslator {
 
       // Parse JSON response
       return this.parseResponse(content, text);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Gemini translation error:', error);
+
+      // Nếu là lỗi quota/resource (429 / RESOURCE_EXHAUSTED) -> fallback
+      const message = (error && (error.message || String(error))) || '';
+      const isQuotaError = /429|RESOURCE_EXHAUSTED|quota|exhausted/i.test(message);
+
+      if (isQuotaError) {
+        console.warn('Gemini quota/RESOURCE_EXHAUSTED detected, falling back to LibreTranslate');
+        try {
+          return await this.libreTranslate(text, target, source, lines);
+        } catch (ltErr) {
+          console.error('LibreTranslate fallback also failed:', ltErr);
+          throw ltErr instanceof Error ? ltErr : new Error('Fallback translation failed');
+        }
+      }
+
       // Giữ nguyên message cụ thể từ parseResponse (vd. lỗi parse JSON) thay
       // vì luôn ghi đè bằng thông báo chung chung, để dễ debug hơn.
       throw error instanceof Error ? error : new Error('Translation failed');
@@ -145,5 +160,53 @@ NGÔN NGỮ ĐÍCH: ${targetLang}`;
     // Không phục hồi được gì đáng tin - báo lỗi thay vì trả rác cho người
     // dùng (rác ở đây còn làm hỏng luôn bước back-translation ở accuracy.ts).
     throw new Error('Không đọc được phản hồi dịch từ Gemini, vui lòng thử lại');
+  }
+
+  // Fallback: sử dụng LibreTranslate (public instance) nếu Gemini lỗi quota.
+  private async libreTranslate(
+    text: string,
+    target: string,
+    source: string,
+    lines?: string[]
+  ): Promise<TranslationResult> {
+    const endpoint = process.env.LIBRETRANSLATE_ENDPOINT || 'https://libretranslate.com/translate';
+
+    // Nếu caller yêu cầu translatedLines, dịch từng dòng để trả mảng tương ứng.
+    let translatedLines: string[] | undefined;
+    if (lines && lines.length) {
+      const promises = lines.map(async (ln) => {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ q: ln, source, target, format: 'text' }),
+        });
+        if (!res.ok) {
+          throw new Error(`LibreTranslate failed: ${res.status} ${res.statusText}`);
+        }
+        const j = await res.json();
+        return typeof j.translatedText === 'string' ? j.translatedText : String(j);
+      });
+      translatedLines = await Promise.all(promises);
+    }
+
+    // Dịch toàn văn (fallback translation) để trả field `translation` và `segments`.
+    const resAll = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ q: text, source, target, format: 'text' }),
+    });
+    if (!resAll.ok) {
+      throw new Error(`LibreTranslate failed: ${resAll.status} ${resAll.statusText}`);
+    }
+    const jAll = await resAll.json();
+    const translated = typeof jAll.translatedText === 'string' ? jAll.translatedText : String(jAll);
+
+    return {
+      translation: translated,
+      detectedScript: 'mixed',
+      segments: [{ original: text, translated }],
+      translatedLines,
+      confidence: 0.6, // lower than Gemini but usable
+    };
   }
 }
