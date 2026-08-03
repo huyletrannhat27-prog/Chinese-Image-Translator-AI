@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import sharp from 'sharp';
 import { runPaddleOcr, PaddleOCRError } from '@/lib/ocr/paddle';
-import { GeminiTranslator } from '@/lib/translation/gemini';
+import { GeminiTranslator, type TranslationResult } from '@/lib/translation/gemini';
 import { evaluateOcrAccuracy, evaluateTranslationAccuracy } from '@/lib/verification/accuracy';
 import type { OCRResult } from '@/types';
 
@@ -98,7 +98,7 @@ export async function POST(req: NextRequest) {
     const translator = new GeminiTranslator(apiKey);
 
     // Try to translate, but do NOT fail the whole pipeline if Gemini quota / error occurs.
-    let translationResult: any;
+    let translationResult: TranslationResult;
     let translationError: string | undefined = undefined;
     try {
       translationResult = await translator.translate(
@@ -121,22 +121,19 @@ export async function POST(req: NextRequest) {
     // 3) Xác định độ chính xác cho cả 2 bước
     const ocrAccuracy = evaluateOcrAccuracy(ocrResult);
 
-    let translationAccuracy: any;
-    if (translationError) {
-      translationAccuracy = {
-        method: 'back-translation',
-        backTranslatedText: '',
-        similarityScore: 0,
-        reliable: false,
-      };
-    } else {
-      translationAccuracy = await evaluateTranslationAccuracy(
-        ocrResult.text,
-        translationResult.translation,
-        translator,
-        ocrResult.detectedScript
-      );
-    }
+    const translationAccuracy = translationError
+      ? {
+          method: 'back-translation',
+          backTranslatedText: '',
+          similarityScore: 0,
+          reliable: false,
+        }
+      : await evaluateTranslationAccuracy(
+          ocrResult.text,
+          translationResult.translation,
+          translator,
+          ocrResult.detectedScript
+        );
 
     return NextResponse.json({
       ocr: ocrResult,

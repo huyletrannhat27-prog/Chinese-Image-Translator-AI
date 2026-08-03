@@ -45,10 +45,10 @@ export class GeminiTranslator {
 
       // Parse JSON response
       return this.parseResponse(content, text);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Gemini translation error:', error);
 
-      const message = (error && (error.message || String(error))) || '';
+      const message = error instanceof Error ? error.message : String(error);
       const isAuthError = /401|403|unauthorized|invalid authentication|api key/i.test(message);
 
       if (isAuthError) {

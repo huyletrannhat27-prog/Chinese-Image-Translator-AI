@@ -1,4 +1,3 @@
-import { ApiError, GoogleGenAI } from '@google/genai';
 import { NextRequest, NextResponse } from 'next/server';
 import {
   buildTranslationCacheKey,
@@ -7,13 +6,8 @@ import {
   withSingleFlight,
 } from '@/lib/cache';
 import { checkTranslateRateLimit, getClientIdentifier, retryAfterSecondsFromReset } from '@/lib/rate-limit';
-import {
-  createTimeoutSignal,
-  isRetryableStatus,
-  makeRetryableError,
-  withRetry,
-  type RetryableCallError,
-} from '@/lib/retry';
+import { type RetryableCallError } from '@/lib/retry';
+import type { TranslationResult } from '@/lib/translation/gemini';
 
 export const maxDuration = 60;
 
@@ -80,12 +74,11 @@ export async function POST(req: NextRequest) {
       const recheck = await getCachedTranslation<GeminiTranslationPayload>(cacheKey);
       if (recheck) return recheck;
 
-      const { signal, clear } = createTimeoutSignal();
       try {
         // Use shared GeminiTranslator to centralize fallback logic (Gemini -> LibreTranslate -> raw)
         const { GeminiTranslator } = await import('@/lib/translation/gemini');
         const translator = new GeminiTranslator(apiKey, GEMINI_MODEL);
-        let translatedResult;
+        let translatedResult: TranslationResult;
         try {
           translatedResult = await translator.translate(normalizedText, target, source, lines);
         } catch (err) {
@@ -119,7 +112,7 @@ export async function POST(req: NextRequest) {
         await setCachedTranslation(cacheKey, result);
         return result;
       } finally {
-        clear();
+        // no cleanup required here
       }
     });
 
@@ -174,58 +167,6 @@ function parseLines(value: FormDataEntryValue | null): string[] | undefined {
   }
 }
 
-function buildTranslationPrompt(text: string, target: string, source: string, lines?: string[]) {
-  const targetName = target === 'vi' ? 'Tiếng Việt' : target;
-  const sourceName = source === 'zh' ? 'tiếng Trung' : source;
-  const lineInstruction = lines?.length
-    ? `\nDanh sách dòng OCR theo đúng thứ tự (trả translatedLines đúng ${lines.length} phần tử):\n${lines
-        .map((line, index) => `${index + 1}. ${line}`)
-        .join('\n')}`
-    : '';
-
-  return `Bạn là dịch giả chuyên nghiệp. Dịch văn bản ${sourceName} sang ${targetName}.
-Giữ đúng ý nghĩa, ngữ cảnh, tên riêng, số và đơn vị; văn phong tự nhiên, không giải thích thêm.
-Chỉ trả JSON hợp lệ:
-{
-  "translation": "bản dịch hoàn chỉnh",
-  "script": "simplified | traditional | mixed",
-  "segments": [{"original": "câu gốc", "translated": "câu dịch"}],
-  "confidence": 0.95${lines?.length ? ',\n  "translatedLines": ["bản dịch dòng 1", "bản dịch dòng 2"]' : ''}
-}
-Văn bản OCR:
-${text}${lineInstruction}`;
-}
-
-function parseTranslationResponse(
-  content: string,
-  originalText: string
-): {
-  translation: string;
-  script?: 'simplified' | 'traditional' | 'mixed';
-  segments?: Array<{ original: string; translated: string }>;
-  confidence?: number;
-  translatedLines?: string[];
-} {
-  const fenced = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/)?.[1] || content;
-  try {
-    const parsed = JSON.parse(fenced.match(/\{[\s\S]*\}/)?.[0] || fenced);
-    if (typeof parsed.translation !== 'string' || !parsed.translation.trim()) {
-      throw new Error('Gemini không trả về bản dịch hợp lệ');
-    }
-    return parsed;
-  } catch (error) {
-    const translationField = fenced.match(/"translation"\s*:\s*"((?:[^"\\]|\\.)*)"/);
-    if (translationField) {
-      const translation = JSON.parse(`"${translationField[1]}"`) as string;
-      return {
-        translation,
-        segments: [{ original: originalText, translated: translation }],
-        confidence: 0.7,
-      };
-    }
-    throw error instanceof Error ? error : new Error('Không đọc được phản hồi dịch từ Gemini');
-  }
-}
 
 function normalizeApiKey(value: string | undefined) {
   return (value || '').trim().replace(/^['"]|['"]$/g, '');
