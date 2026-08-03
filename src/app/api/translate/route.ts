@@ -82,42 +82,24 @@ export async function POST(req: NextRequest) {
 
       const { signal, clear } = createTimeoutSignal();
       try {
-        const ai = new GoogleGenAI({ apiKey });
-        const response = await withRetry(
-          'gemini',
-          async () => {
-            try {
-              return await ai.models.generateContent({
-                model: GEMINI_MODEL,
-                contents: buildTranslationPrompt(normalizedText, target, source, lines),
-                config: {
-                  temperature: 0.2,
-                  maxOutputTokens: 6144,
-                  responseMimeType: 'application/json',
-                },
-              });
-            } catch (error) {
-              if (error instanceof ApiError) {
-                throw makeRetryableError(error.message, {
-                  status: error.status,
-                  retryable: isRetryableStatus(error.status),
-                });
-              }
-              if (error instanceof Error && error.name === 'AbortError') throw error;
-              throw makeRetryableError(
-                error instanceof Error ? error.message : 'Lỗi không xác định từ Gemini',
-                { retryable: true }
-              );
-            }
-          },
-          { signal }
-        );
-
-        let parsed;
+        // Use shared GeminiTranslator to centralize fallback logic (Gemini -> LibreTranslate -> raw)
+        const { GeminiTranslator } = await import('@/lib/translation/gemini');
+        const translator = new GeminiTranslator(apiKey, GEMINI_MODEL);
+        let translatedResult;
         try {
-          console.error('Gemini raw response:', response.text?.slice(0, 1000));
-          parsed = parseTranslationResponse(response.text || '', normalizedText);
-        } catch (parseErr) {
+          translatedResult = await translator.translate(normalizedText, target, source, lines);
+        } catch (err) {
+          // If GeminiTranslator throws (eg auth error), propagate to outer catch to handle
+          throw err instanceof Error ? err : new Error('Translation provider failed');
+        }
+
+        const parsed = {
+          translation: translatedResult.translation,
+          script: translatedResult.detectedScript,
+          segments: translatedResult.segments,
+          confidence: translatedResult.confidence,
+          translatedLines: translatedResult.translatedLines,
+        } as const;
           console.warn('Gemini response parse failed, attempting LibreTranslate fallback', parseErr);
           // Try LibreTranslate fallback
           const endpoint = process.env.LIBRETRANSLATE_ENDPOINT || 'https://libretranslate.com/translate';
