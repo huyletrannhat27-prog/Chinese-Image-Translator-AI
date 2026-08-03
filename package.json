@@ -9,6 +9,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "start:prod": "next start -p ${PORT:-3000}",
     "lint": "eslint .",
     "type-check": "tsc --noEmit",
     "android:sync": "cap sync android",

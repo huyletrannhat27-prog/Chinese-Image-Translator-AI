@@ -172,6 +172,17 @@ def build_result(ocr_output, image_width, image_height):
         word_boxes = raw_boxes
         confidences = [b.get("confidence", 0) for b in raw_boxes]
 
+    def is_cjk_text(text: str) -> bool:
+        return bool(re.search(r"[\u4e00-\u9fff]", text))
+
+    def join_box_texts(boxes):
+        texts = [b["text"] for b in boxes if b.get("text")]
+        if not texts:
+            return ""
+        if sum(1 for t in texts if is_cjk_text(t)) >= len(texts) * 0.6:
+            return "".join(texts).strip()
+        return " ".join(texts).strip()
+
     # Group boxes into lines/regions by clustering on vertical position
     # Sort top->bottom, left->right
     boxes_sorted = sorted(word_boxes, key=lambda b: (b["bbox"]["y0"], b["bbox"]["x0"]))
@@ -197,11 +208,20 @@ def build_result(ocr_output, image_width, image_height):
         if not placed:
             regions.append({"boxes": [box], "y_center": y_center, "height": height, "count": 1})
 
-    # Build canonical region objects: merge bounding boxes and join text left->right
+    # Build canonical region objects: merge bounding boxes and join text by reading order
     canonical_regions = []
     for reg in regions:
-        boxes = sorted(reg["boxes"], key=lambda b: b["bbox"]["x0"])
-        texts = [b["text"] for b in boxes if b.get("text")]
+        boxes = reg["boxes"]
+        vertical_count = sum(
+            1
+            for box in boxes
+            if (box["bbox"]["y1"] - box["bbox"]["y0"]) > (box["bbox"]["x1"] - box["bbox"]["x0"]) * 1.35
+        )
+        orientation = "vertical" if vertical_count > len(boxes) / 2 else "horizontal"
+        boxes = sorted(
+            boxes,
+            key=(lambda b: (b["bbox"]["x0"], b["bbox"]["y0"])) if orientation == "vertical" else (lambda b: (b["bbox"]["y0"], b["bbox"]["x0"]))
+        )
         merged_bbox = {
             "x0": min(b["bbox"]["x0"] for b in boxes),
             "y0": min(b["bbox"]["y0"] for b in boxes),
@@ -210,10 +230,11 @@ def build_result(ocr_output, image_width, image_height):
         }
         avg_conf = sum(b.get("confidence", 0) for b in boxes) / len(boxes)
         canonical_regions.append({
-            "text": " ".join(texts).strip(),
+            "text": join_box_texts(boxes),
             "confidence": round(avg_conf, 4),
             "bbox": merged_bbox,
             "lineCount": len(boxes),
+            "orientation": orientation,
         })
 
     full_text = "\n".join(r["text"] for r in canonical_regions if r["text"]) if canonical_regions else "\n".join([b["text"] for b in word_boxes])

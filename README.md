@@ -17,6 +17,7 @@
 
 - Chụp ảnh trực tiếp bằng camera hoặc chọn ảnh từ thiết bị, tối đa 10 MB.
 - Nhận dạng chữ Trung giản thể, phồn thể và văn bản Latin bằng PaddleOCR (server) theo mặc định; Tesseract.js được dùng làm fallback trên trình duyệt nếu môi trường deploy không có Python/Paddle.
+- PaddleOCR self-host yêu cầu Python 3 và các package trong `scripts/requirements-ocr.txt`. Nếu trình thông dịch Python không phải `python3`, đặt `PADDLE_OCR_PYTHON_BIN` trong `.env`.
 - Dịch văn bản OCR sang tiếng Việt bằng Google Gemini.
 - Ước lượng độ tin cậy OCR từ confidence của từng vùng chữ.
 - Kiểm tra bản dịch bằng dịch vòng Việt → Trung và hệ số tương đồng Dice.
@@ -111,6 +112,12 @@ python scripts/paddle_ocr.py assets/icon.png
 ```
 
 Trên Linux/macOS có thể dùng `python3`. Nếu executable có tên khác, đặt `PADDLE_OCR_PYTHON_BIN` trong `.env`.
+
+### Deploy trên Render bằng Docker
+
+Đây là app Next.js có OCR server-side bằng PaddleOCR. Để deploy đúng và giữ khả năng chạy OCR trên Render, cần có Python 3 và cài `scripts/requirements-ocr.txt` trong môi trường chạy.
+
+Nếu muốn dùng Docker để giữ môi trường nhất quán, repo đã cung cấp `Dockerfile` sẵn. Trong Docker, app sẽ khởi động trên cổng `3000` và tự động dùng `PADDLE_OCR_PYTHON_BIN=python3` nếu cần.
 
 ## API chính
 
