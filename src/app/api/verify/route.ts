@@ -96,21 +96,47 @@ export async function POST(req: NextRequest) {
       .map((line) => line.trim())
       .filter(Boolean);
     const translator = new GeminiTranslator(apiKey);
-    const translationResult = await translator.translate(
-      ocrResult.text,
-      target,
-      'zh',
-      textLines.length ? textLines : undefined
-    );
+
+    // Try to translate, but do NOT fail the whole pipeline if Gemini quota / error occurs.
+    let translationResult: any;
+    let translationError: string | undefined = undefined;
+    try {
+      translationResult = await translator.translate(
+        ocrResult.text,
+        target,
+        'zh',
+        textLines.length ? textLines : undefined
+      );
+    } catch (tErr) {
+      console.error('Gemini translation failed:', tErr);
+      translationError = tErr instanceof Error ? tErr.message : String(tErr);
+      translationResult = {
+        translation: '',
+        detectedScript: ocrResult.detectedScript,
+        segments: [{ original: ocrResult.text, translated: '' }],
+        confidence: 0,
+      };
+    }
 
     // 3) Xác định độ chính xác cho cả 2 bước
     const ocrAccuracy = evaluateOcrAccuracy(ocrResult);
-    const translationAccuracy = await evaluateTranslationAccuracy(
-      ocrResult.text,
-      translationResult.translation,
-      translator,
-      ocrResult.detectedScript
-    );
+
+    let translationAccuracy: any;
+    if (translationError) {
+      translationAccuracy = {
+        method: 'back-translation',
+        backTranslatedText: '',
+        similarityScore: 0,
+        reliable: false,
+      };
+    } else {
+      translationAccuracy = await evaluateTranslationAccuracy(
+        ocrResult.text,
+        translationResult.translation,
+        translator,
+        ocrResult.detectedScript
+      );
+    }
 
     return NextResponse.json({
       ocr: ocrResult,
