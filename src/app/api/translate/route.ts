@@ -113,7 +113,34 @@ export async function POST(req: NextRequest) {
           { signal }
         );
 
-        const parsed = parseTranslationResponse(response.text || '', normalizedText);
+        let parsed;
+        try {
+          parsed = parseTranslationResponse(response.text || '', normalizedText);
+        } catch (parseErr) {
+          console.warn('Gemini response parse failed, attempting LibreTranslate fallback', parseErr);
+          // Try LibreTranslate fallback
+          const endpoint = process.env.LIBRETRANSLATE_ENDPOINT || 'https://libretranslate.com/translate';
+          try {
+            const body = JSON.stringify({ q: normalizedText, source, target, format: 'text' });
+            const ltRes = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
+            if (!ltRes.ok) throw new Error(`LibreTranslate failed: ${ltRes.status} ${ltRes.statusText}`);
+            const ltJson = await ltRes.json();
+            const translatedText = typeof ltJson.translatedText === 'string' ? ltJson.translatedText : String(ltJson);
+            parsed = { translation: translatedText, script: 'mixed', segments: [{ original: normalizedText, translated: translatedText }], confidence: 0.6 };
+            if (lines && lines.length) {
+              // attempt to translate per-line
+              try {
+                const perLinePromises = lines.map((ln) => fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ q: ln, source, target, format: 'text' }) }).then((r) => r.json()).then((j) => (typeof j.translatedText === 'string' ? j.translatedText : String(j))));
+                const translatedLines = await Promise.all(perLinePromises);
+                parsed.translatedLines = translatedLines;
+              } catch { /* ignore per-line failure */ }
+            }
+          } catch (ltErr) {
+            console.error('LibreTranslate fallback failed:', ltErr);
+            throw parseErr; // rethrow original parse error to be handled by outer catch
+          }
+        }
+
         const translatedLines =
           lines && parsed.translatedLines?.length === lines.length
             ? parsed.translatedLines
