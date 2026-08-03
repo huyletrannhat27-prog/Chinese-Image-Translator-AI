@@ -100,37 +100,6 @@ export async function POST(req: NextRequest) {
           confidence: translatedResult.confidence,
           translatedLines: translatedResult.translatedLines,
         } as const;
-          console.warn('Gemini response parse failed, attempting LibreTranslate fallback', parseErr);
-          // Try LibreTranslate fallback
-          const endpoint = process.env.LIBRETRANSLATE_ENDPOINT || 'https://libretranslate.com/translate';
-          try {
-            const body = JSON.stringify({ q: normalizedText, source, target, format: 'text' });
-            const ltRes = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
-            if (!ltRes.ok) throw new Error(`LibreTranslate failed: ${ltRes.status} ${ltRes.statusText}`);
-            const ltJson = await ltRes.json();
-            const translatedText = typeof ltJson.translatedText === 'string' ? ltJson.translatedText : String(ltJson);
-            parsed = { translation: translatedText, script: 'mixed', segments: [{ original: normalizedText, translated: translatedText }], confidence: 0.6 };
-            if (lines && lines.length) {
-              // attempt to translate per-line
-              try {
-                const perLinePromises = lines.map((ln) => fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ q: ln, source, target, format: 'text' }) }).then((r) => r.json()).then((j) => (typeof j.translatedText === 'string' ? j.translatedText : String(j))));
-                const translatedLines = await Promise.all(perLinePromises);
-                parsed.translatedLines = translatedLines;
-              } catch { /* ignore per-line failure */ }
-            }
-          } catch (ltErr) {
-            console.error('LibreTranslate fallback failed:', ltErr);
-            // Nếu fallback cũng thất bại, chấp nhận lấy nguyên raw text từ Gemini
-            console.warn('Using raw Gemini response text as fallback translation');
-            const raw = (response.text || '').replace(/```(?:json)?\s*([\s\S]*?)\s*```/, '$1').trim();
-            parsed = {
-              translation: raw || normalizedText,
-              script: 'mixed',
-              segments: [{ original: normalizedText, translated: raw || normalizedText }],
-              confidence: 0.5,
-            };
-          }
-        }
 
         const translatedLines =
           lines && parsed.translatedLines?.length === lines.length
