@@ -137,7 +137,15 @@ export async function POST(req: NextRequest) {
             }
           } catch (ltErr) {
             console.error('LibreTranslate fallback failed:', ltErr);
-            throw parseErr; // rethrow original parse error to be handled by outer catch
+            // Nếu fallback cũng thất bại, chấp nhận lấy nguyên raw text từ Gemini
+            console.warn('Using raw Gemini response text as fallback translation');
+            const raw = (response.text || '').replace(/```(?:json)?\s*([\s\S]*?)\s*```/, '$1').trim();
+            parsed = {
+              translation: raw || normalizedText,
+              script: 'mixed',
+              segments: [{ original: normalizedText, translated: raw || normalizedText }],
+              confidence: 0.5,
+            };
           }
         }
 
