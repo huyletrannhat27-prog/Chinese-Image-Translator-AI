@@ -115,6 +115,7 @@ export async function POST(req: NextRequest) {
 
         let parsed;
         try {
+          console.error('Gemini raw response:', response.text?.slice(0, 1000));
           parsed = parseTranslationResponse(response.text || '', normalizedText);
         } catch (parseErr) {
           console.warn('Gemini response parse failed, attempting LibreTranslate fallback', parseErr);
