@@ -32,8 +32,7 @@
 Chụp hoặc tải ảnh
         |
         v
-Tesseract.js trên trình duyệt
-(text, bbox, confidence, loại chữ)
+PaddleOCR server (/api/ocr) trên server
         |
         v
 Gemini: Trung -> Việt
@@ -47,7 +46,9 @@ Tính điểm OCR + điểm tương đồng bản dịch
 Hiển thị kết quả và lưu lịch sử cục bộ
 ```
 
-Luồng trên được dùng trên giao diện để phản hồi nhanh và deploy thuận tiện. Dự án còn cung cấp `/api/ocr` và nhánh gửi ảnh của `/api/verify` để chạy PaddleOCR self-host khi môi trường đã cài Python và các gói trong `scripts/requirements-ocr.txt`.
+Ứng dụng ưu tiên PaddleOCR server-side cho độ chính xác OCR. Nếu môi trường deploy không có Python/Paddle, giao diện vẫn có thể dùng Tesseract.js làm fallback trên trình duyệt để nhận diện chữ và tiếp tục dịch.
+
+Dự án còn cung cấp `/api/ocr` và nhánh gửi ảnh của `/api/verify` để chạy PaddleOCR self-host khi môi trường đã cài Python và các gói trong `scripts/requirements-ocr.txt`.
 
 ## Công nghệ
 
