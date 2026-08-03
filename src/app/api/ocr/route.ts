@@ -44,7 +44,25 @@ export async function POST(req: NextRequest) {
       .jpeg({ quality: 90, mozjpeg: true })
       .toBuffer();
 
-    const ocrResult = await runPaddleOcr(optimizedBuffer, { lang });
+    // Optional preprocessing to improve OCR accuracy: convert to greyscale,
+    // normalize contrast and sharpen. Controlled by ENABLE_OCR_PREPROCESSING.
+    const enablePreproc = (process.env.ENABLE_OCR_PREPROCESSING || '1') !== '0';
+    let preprocessedBuffer = optimizedBuffer;
+    if (enablePreproc) {
+      try {
+        preprocessedBuffer = await sharp(optimizedBuffer)
+          .greyscale()
+          .normalize()
+          .sharpen()
+          .jpeg({ quality: 90, mozjpeg: true })
+          .toBuffer();
+      } catch (preErr) {
+        console.warn('OCR preprocessing failed, falling back to optimized image:', preErr);
+        preprocessedBuffer = optimizedBuffer;
+      }
+    }
+
+    const ocrResult = await runPaddleOcr(preprocessedBuffer, { lang });
 
     return NextResponse.json(ocrResult);
   } catch (error) {

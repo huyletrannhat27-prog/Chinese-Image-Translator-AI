@@ -63,7 +63,25 @@ export async function POST(req: NextRequest) {
         .resize(2560, 2560, { fit: 'inside', withoutEnlargement: true })
         .jpeg({ quality: 90, mozjpeg: true })
         .toBuffer();
-      ocrResult = await runPaddleOcr(optimizedBuffer);
+
+      // Preprocessing to improve OCR accuracy (contrast/sharpen). Toggle via env.
+      const enablePreproc = (process.env.ENABLE_OCR_PREPROCESSING || '1') !== '0';
+      let preprocessedBuffer = optimizedBuffer;
+      if (enablePreproc) {
+        try {
+          preprocessedBuffer = await sharp(optimizedBuffer)
+            .greyscale()
+            .normalize()
+            .sharpen()
+            .jpeg({ quality: 90, mozjpeg: true })
+            .toBuffer();
+        } catch (preErr) {
+          console.warn('OCR preprocessing failed, using optimized buffer:', preErr);
+          preprocessedBuffer = optimizedBuffer;
+        }
+      }
+
+      ocrResult = await runPaddleOcr(preprocessedBuffer);
     }
     if (!ocrResult.text.trim()) {
       return NextResponse.json(
