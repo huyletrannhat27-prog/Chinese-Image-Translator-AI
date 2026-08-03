@@ -48,23 +48,23 @@ export class GeminiTranslator {
     } catch (error: any) {
       console.error('Gemini translation error:', error);
 
-      // Nếu là lỗi quota/resource (429 / RESOURCE_EXHAUSTED) -> fallback
       const message = (error && (error.message || String(error))) || '';
-      const isQuotaError = /429|RESOURCE_EXHAUSTED|quota|exhausted/i.test(message);
+      const isAuthError = /401|403|unauthorized|invalid authentication|api key/i.test(message);
 
-      if (isQuotaError) {
-        console.warn('Gemini quota/RESOURCE_EXHAUSTED detected, falling back to LibreTranslate');
-        try {
-          return await this.libreTranslate(text, target, source, lines);
-        } catch (ltErr) {
-          console.error('LibreTranslate fallback also failed:', ltErr);
-          throw ltErr instanceof Error ? ltErr : new Error('Fallback translation failed');
-        }
+      if (isAuthError) {
+        // Nếu lỗi xác thực, không dùng fallback — cần user sửa API key
+        throw error instanceof Error ? error : new Error('Invalid Gemini API key');
       }
 
-      // Giữ nguyên message cụ thể từ parseResponse (vd. lỗi parse JSON) thay
-      // vì luôn ghi đè bằng thông báo chung chung, để dễ debug hơn.
-      throw error instanceof Error ? error : new Error('Translation failed');
+      // Với mọi lỗi khác (bao gồm parse lỗi), thử fallback sang LibreTranslate
+      console.warn('Gemini failed (not auth). Attempting LibreTranslate fallback.');
+      try {
+        return await this.libreTranslate(text, target, source, lines);
+      } catch (ltErr) {
+        console.error('LibreTranslate fallback also failed:', ltErr);
+        // Nếu fallback cũng fail thì trả lại lỗi ban đầu để dễ debug
+        throw error instanceof Error ? error : new Error('Translation failed');
+      }
     }
   }
 
