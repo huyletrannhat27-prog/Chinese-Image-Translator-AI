@@ -95,17 +95,43 @@ def normalize_ocr_output(ocr_output):
 
 
 def build_result(ocr_output, image_width, image_height):
+    """
+    Build a more robust OCR result:
+    - filter out very low-confidence or extremely short/noise detections
+    - keep the raw wordBoxes for debugging
+    - group nearby wordBoxes into line-based "regions" (paragraph/line units)
+      which are returned as `regions` so downstream code can overlay translations
+      on line/region granularity instead of individual noisy boxes.
+
+    Tunable via environment variables:
+    - PADDLE_OCR_MIN_SCORE (default 0.35)
+    - PADDLE_OCR_MIN_TEXT_LEN (default 1)
+    - PADDLE_OCR_MERGE_Y_RATIO (default 0.6)
+    """
+    import re
+
+    MIN_SCORE = float(os.environ.get("PADDLE_OCR_MIN_SCORE", "0.35"))
+    MIN_TEXT_LEN = int(os.environ.get("PADDLE_OCR_MIN_TEXT_LEN", "1"))
+    MERGE_Y_RATIO = float(os.environ.get("PADDLE_OCR_MERGE_Y_RATIO", "0.6"))
+
     word_boxes = []
-    full_text_parts = []
     confidences = []
 
+    # Collect raw boxes but apply light filtering to remove obvious noise
     for text, score, poly in normalize_ocr_output(ocr_output):
         if not text or not str(text).strip():
             continue
+        text = str(text).strip()
 
-        # poly có thể là numpy array (từ .predict()/PaddleX) - không dùng
-        # "if poly:" trực tiếp vì numpy báo lỗi "truth value ... ambiguous"
-        # với mảng có nhiều hơn 1 phần tử. Kiểm tra None + độ dài thay vào đó.
+        # drop very low confidence detections
+        if score is None or float(score) < MIN_SCORE:
+            continue
+
+        # drop extremely short non-CJK tokens (likely noise)
+        has_cjk = bool(re.search(r"[\u4e00-\u9fff]", text))
+        if len(text) <= MIN_TEXT_LEN and not has_cjk:
+            continue
+
         has_poly = poly is not None and len(poly) > 0
         if has_poly:
             xs = [float(p[0]) for p in poly]
@@ -119,22 +145,92 @@ def build_result(ocr_output, image_width, image_height):
         else:
             bbox = {"x0": 0.0, "y0": 0.0, "x1": 0.0, "y1": 0.0}
 
-        word_boxes.append({"text": text, "confidence": round(score, 4), "bbox": bbox})
-        full_text_parts.append(text)
-        confidences.append(score)
+        word_boxes.append({"text": text, "confidence": round(float(score), 4), "bbox": bbox})
+        confidences.append(float(score))
 
-    full_text = "\n".join(full_text_parts)
+    # If no boxes survived filtering, fall back to unfiltered output to avoid losing data
+    if not word_boxes:
+        raw_boxes = []
+        for text, score, poly in normalize_ocr_output(ocr_output):
+            if not text or not str(text).strip():
+                continue
+            text = str(text).strip()
+            has_poly = poly is not None and len(poly) > 0
+            if has_poly:
+                xs = [float(p[0]) for p in poly]
+                ys = [float(p[1]) for p in poly]
+                bbox = {
+                    "x0": min(xs),
+                    "y0": min(ys),
+                    "x1": max(xs),
+                    "y1": max(ys),
+                }
+            else:
+                bbox = {"x0": 0.0, "y0": 0.0, "x1": 0.0, "y1": 0.0}
+            raw_boxes.append({"text": text, "confidence": round(float(score or 0), 4), "bbox": bbox})
+        # Use raw boxes but keep confidence 0 for averaging
+        word_boxes = raw_boxes
+        confidences = [b.get("confidence", 0) for b in raw_boxes]
+
+    # Group boxes into lines/regions by clustering on vertical position
+    # Sort top->bottom, left->right
+    boxes_sorted = sorted(word_boxes, key=lambda b: (b["bbox"]["y0"], b["bbox"]["x0"]))
+
+    regions = []
+    for box in boxes_sorted:
+        y0 = box["bbox"]["y0"]
+        y1 = box["bbox"]["y1"]
+        y_center = (y0 + y1) / 2.0
+        height = max(1.0, y1 - y0)
+
+        placed = False
+        for reg in regions:
+            # reg stores average center and avg height
+            if abs(y_center - reg["y_center"]) <= max(height, reg["height"]) * MERGE_Y_RATIO:
+                reg["boxes"].append(box)
+                # update stats
+                reg["y_center"] = (reg["y_center"] * reg["count"] + y_center) / (reg["count"] + 1)
+                reg["height"] = max(reg["height"], height)
+                reg["count"] += 1
+                placed = True
+                break
+        if not placed:
+            regions.append({"boxes": [box], "y_center": y_center, "height": height, "count": 1})
+
+    # Build canonical region objects: merge bounding boxes and join text left->right
+    canonical_regions = []
+    for reg in regions:
+        boxes = sorted(reg["boxes"], key=lambda b: b["bbox"]["x0"])
+        texts = [b["text"] for b in boxes if b.get("text")]
+        merged_bbox = {
+            "x0": min(b["bbox"]["x0"] for b in boxes),
+            "y0": min(b["bbox"]["y0"] for b in boxes),
+            "x1": max(b["bbox"]["x1"] for b in boxes),
+            "y1": max(b["bbox"]["y1"] for b in boxes),
+        }
+        avg_conf = sum(b.get("confidence", 0) for b in boxes) / len(boxes)
+        canonical_regions.append({
+            "text": " ".join(texts).strip(),
+            "confidence": round(avg_conf, 4),
+            "bbox": merged_bbox,
+            "lineCount": len(boxes),
+        })
+
+    full_text = "\n".join(r["text"] for r in canonical_regions if r["text"]) if canonical_regions else "\n".join([b["text"] for b in word_boxes])
     average_confidence = sum(confidences) / len(confidences) if confidences else 0.0
 
-    return {
+    result = {
         "text": full_text,
         "confidence": round(average_confidence, 4),
         "detectedScript": detect_script(full_text),
         "language": "zh",
         "wordBoxes": word_boxes,
+        "regions": canonical_regions,
         "imageWidth": image_width,
         "imageHeight": image_height,
     }
+
+    return result
 
 
 def get_image_size(image_path):
